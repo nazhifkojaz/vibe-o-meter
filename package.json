@@ -1,0 +1,15 @@
+{
+  "name": "vibe-stats",
+  "version": "0.1.0",
+  "description": "Terminal tool to visualize AI coding agent usage across OpenCode, Claude Code, Codex, and Pi",
+  "main": "src/index.ts",
+  "bin": {
+    "vibe-stats": "src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts"
+  },
+  "keywords": ["ai", "coding", "agent", "stats", "heatmap", "terminal"],
+  "license": "MIT"
+}
