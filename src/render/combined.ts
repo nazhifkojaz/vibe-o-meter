@@ -7,7 +7,7 @@ import path from "path";
 
 export function render(stats: CombinedStats, options: { weeks: number; by?: "model" | "project" | "hour" }): string {
   if (stats.agents.length === 0) {
-    return "No AI coding agent data found.\n\nChecked the default local data locations:\n  - OpenCode: $XDG_DATA_HOME/opencode/opencode.db, ~/.local/share/opencode/opencode.db, or ~/Library/Application Support/opencode/opencode.db\n  - Claude Code: ~/.claude/stats-cache.json or ~/.claude/projects/\n  - Codex: ~/.codex/state_5.sqlite or ~/.codex/sessions/\n  - Pi: ~/.pi/agent/sessions/\n\nIf your data lives elsewhere, pass an explicit path with --db, --claude, --codex, or --pi.";
+    return "No AI coding agent data found.\n\nChecked common local data locations:\n  - OpenCode: $XDG_DATA_HOME/opencode/opencode.db, ~/.local/share/opencode/opencode.db, ~/Library/Application Support/opencode/opencode.db, or %APPDATA%/opencode/opencode.db\n  - Claude Code: ~/.claude, $XDG_CONFIG_HOME/claude, $XDG_DATA_HOME/claude, ~/Library/Application Support/Claude, or %APPDATA%/Claude\n  - Codex: ~/.codex, $XDG_CONFIG_HOME/codex, $XDG_DATA_HOME/codex, ~/Library/Application Support/Codex, or %APPDATA%/Codex\n  - Pi: ~/.pi/agent/sessions, $XDG_DATA_HOME/pi/agent/sessions, ~/Library/Application Support/Pi/agent/sessions, or %APPDATA%/Pi/agent/sessions\n\nRun with --verbose to see exactly which paths were checked. If your data lives elsewhere, pass an explicit path with --db, --claude, --codex, or --pi.";
   }
 
   const sections: string[] = [];

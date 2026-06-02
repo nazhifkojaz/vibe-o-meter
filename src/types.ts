@@ -74,6 +74,7 @@ export interface CliOptions {
   model?: string;
   by?: "model" | "project" | "hour";
   json?: boolean;
+  verbose?: boolean;
   db?: string;
   claude?: string;
   codex?: string;

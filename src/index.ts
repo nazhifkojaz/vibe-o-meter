@@ -1,3 +1,5 @@
+import os from "os";
+import path from "path";
 import { collectAll } from "./sources/registry";
 import { buildCombined, filterTimeRange } from "./compute";
 import { render, renderJson } from "./render/combined";
@@ -27,6 +29,10 @@ function parseArgs(): CliOptions {
         break;
       case "--json":
         options.json = true;
+        break;
+      case "--verbose":
+      case "-v":
+        options.verbose = true;
         break;
       case "--db":
         options.db = readOptionValue(args, ++i, arg);
@@ -59,7 +65,17 @@ function readOptionValue(args: string[], index: number, option: string): string 
   if (!value || value.startsWith("--")) {
     fail(`Missing value for ${option}`);
   }
-  return value;
+  return resolvePath(value);
+}
+
+function resolvePath(p: string): string {
+  if (p.startsWith("~/")) {
+    return path.join(os.homedir(), p.slice(1));
+  }
+  if (p === "~") {
+    return os.homedir();
+  }
+  return p;
 }
 
 function parseWeeks(value: string): number {
@@ -97,6 +113,7 @@ OPTIONS
   --model <name>     Filter to a specific model (substring match, e.g. gpt-4o)
   --by <dimension>   Breakdown: model, project, hour
   --json             Output raw JSON
+  -v, --verbose      Show path detection debug info
   --db <path>        Override OpenCode DB path
   --claude <path>    Override Claude data path (stats-cache file or projects dir)
   --codex <path>     Override Codex data path (state DB, .codex dir, or sessions dir)

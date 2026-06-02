@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentStats } from "../src/types";
 
 const ORIGINAL_HOME = process.env.HOME;
+const ORIGINAL_XDG_CONFIG_HOME = process.env.XDG_CONFIG_HOME;
 const ORIGINAL_XDG_DATA_HOME = process.env.XDG_DATA_HOME;
 const ORIGINAL_APPDATA = process.env.APPDATA;
 const tempDirs: string[] = [];
@@ -21,6 +22,7 @@ afterEach(() => {
   vi.doUnmock("../src/sources/pi");
   vi.resetModules();
   process.env.HOME = ORIGINAL_HOME;
+  restoreEnv("XDG_CONFIG_HOME", ORIGINAL_XDG_CONFIG_HOME);
   restoreEnv("XDG_DATA_HOME", ORIGINAL_XDG_DATA_HOME);
   restoreEnv("APPDATA", ORIGINAL_APPDATA);
 
@@ -70,9 +72,14 @@ function makeStats(harness: string, sourcePath = `/mock/${harness}`): AgentStats
   };
 }
 
-async function importRegistry(home: string, env: { xdgDataHome?: string; appData?: string } = {}) {
+async function importRegistry(home: string, env: { xdgConfigHome?: string; xdgDataHome?: string; appData?: string } = {}) {
   vi.resetModules();
   process.env.HOME = home;
+  if (env.xdgConfigHome) {
+    process.env.XDG_CONFIG_HOME = env.xdgConfigHome;
+  } else {
+    delete process.env.XDG_CONFIG_HOME;
+  }
   if (env.xdgDataHome) {
     process.env.XDG_DATA_HOME = env.xdgDataHome;
   } else {
@@ -151,6 +158,60 @@ describe("collectAll", () => {
 
     expect(agents.map((agent) => agent.harness)).toEqual(["codex"]);
     expect(codexParse).toHaveBeenCalledWith(path.join(home, ".codex"), undefined, undefined);
+  });
+
+  it("detects Claude under XDG_CONFIG_HOME", async () => {
+    const home = makeHome();
+    const xdgConfigHome = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-xdg-config-"));
+    tempDirs.push(xdgConfigHome);
+    const claudeRoot = path.join(xdgConfigHome, "claude");
+    mkdirSync(path.join(claudeRoot, "projects"), { recursive: true });
+
+    const { collectAll } = await importRegistry(home, { xdgConfigHome });
+    const agents = collectAll({ agent: "claude" });
+
+    expect(agents.map((agent) => agent.harness)).toEqual(["claude"]);
+    expect(claudeParse).toHaveBeenCalledWith(claudeRoot, undefined);
+  });
+
+  it("detects Codex under AppData", async () => {
+    const home = makeHome();
+    const appData = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-appdata-"));
+    tempDirs.push(appData);
+    const codexRoot = path.join(appData, "Codex");
+    mkdirSync(path.join(codexRoot, "sessions"), { recursive: true });
+
+    const { collectAll } = await importRegistry(home, { appData });
+    const agents = collectAll({ agent: "codex" });
+
+    expect(agents.map((agent) => agent.harness)).toEqual(["codex"]);
+    expect(codexParse).toHaveBeenCalledWith(codexRoot, undefined, undefined);
+  });
+
+  it("detects Pi sessions under XDG_DATA_HOME", async () => {
+    const home = makeHome();
+    const xdgDataHome = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-xdg-pi-"));
+    tempDirs.push(xdgDataHome);
+    const sessionsDir = path.join(xdgDataHome, "pi", "agent", "sessions");
+    mkdirSync(sessionsDir, { recursive: true });
+
+    const { collectAll } = await importRegistry(home, { xdgDataHome });
+    const agents = collectAll({ agent: "pi" });
+
+    expect(agents.map((agent) => agent.harness)).toEqual(["pi"]);
+    expect(piParse).toHaveBeenCalledWith(sessionsDir, undefined);
+  });
+
+  it("detects Pi sessions in a macOS Application Support location", async () => {
+    const home = makeHome();
+    const sessionsDir = path.join(home, "Library", "Application Support", "Pi", "agent", "sessions");
+    mkdirSync(sessionsDir, { recursive: true });
+
+    const { collectAll } = await importRegistry(home);
+    const agents = collectAll({ agent: "pi" });
+
+    expect(agents.map((agent) => agent.harness)).toEqual(["pi"]);
+    expect(piParse).toHaveBeenCalledWith(sessionsDir, undefined);
   });
 
   it("skips parsers when default locations are missing", async () => {

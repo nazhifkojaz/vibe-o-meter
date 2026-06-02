@@ -1,9 +1,10 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
 import { formatDateLocal } from "../render/format";
 
-const DEFAULT_ROOT = `${process.env.HOME}/.claude`;
+const DEFAULT_ROOT = path.join(os.homedir(), ".claude");
 const DEFAULT_CACHE_PATH = path.join(DEFAULT_ROOT, "stats-cache.json");
 const DEFAULT_PROJECTS_DIR = path.join(DEFAULT_ROOT, "projects");
 
@@ -50,7 +51,7 @@ interface ClaudeProjectLine {
 }
 
 export function parse(claudePath?: string, modelFilter?: string): AgentStats | null {
-  const targetPath = claudePath || DEFAULT_ROOT;
+  const targetPath = claudePath ? path.resolve(claudePath) : DEFAULT_ROOT;
 
   try {
     const stat = fs.statSync(targetPath);

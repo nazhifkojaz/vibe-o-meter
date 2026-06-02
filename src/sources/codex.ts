@@ -1,11 +1,12 @@
 import { Database, queryAll } from "./sqlite";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
 import { formatDateLocal } from "../render/format";
 
-const DEFAULT_DB_PATH = `${process.env.HOME}/.codex/state_5.sqlite`;
-const DEFAULT_SESSIONS_DIR = `${process.env.HOME}/.codex/sessions`;
+const DEFAULT_DB_PATH = path.join(os.homedir(), ".codex", "state_5.sqlite");
+const DEFAULT_SESSIONS_DIR = path.join(os.homedir(), ".codex", "sessions");
 
 interface RolloutTokens {
   inputTokens: number;

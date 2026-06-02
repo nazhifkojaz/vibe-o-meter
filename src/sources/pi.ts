@@ -1,16 +1,17 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
 import { formatDateLocal } from "../render/format";
 
-const DEFAULT_SESSIONS_DIR = `${process.env.HOME}/.pi/agent/sessions`;
+const DEFAULT_SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
 
 interface PiMessageUsage {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  totalTokens: number;
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  totalTokens?: number;
   cost?: {
     input: number;
     output: number;
@@ -33,6 +34,7 @@ interface PiLine {
   role?: string;
   timestamp?: string;
   cwd?: string;
+  modelId?: string;
   message?: {
     role?: string;
     model?: string;
@@ -57,20 +59,32 @@ function parseSessionFile(filePath: string): AggregatedSession | null {
     const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
     let header: PiSessionHeader | null = null;
     const messages: AggregatedSession["messages"] = [];
+    let currentModel = "unknown";
+    let currentProvider = "unknown";
+    let firstTimestamp = "";
 
     for (const line of lines) {
       try {
         const obj: PiLine = JSON.parse(line);
+        if (obj.timestamp && !firstTimestamp) {
+          firstTimestamp = obj.timestamp;
+        }
         if (obj.type === "session" && obj.timestamp && obj.cwd !== undefined) {
           header = obj as unknown as PiSessionHeader;
         }
+        if (obj.type === "model_change" && obj.modelId) {
+          currentModel = obj.modelId;
+        }
         if (obj.type === "message" && obj.message) {
           const msg = obj.message;
-          if (msg.usage && msg.usage.totalTokens > 0) {
+          const totalTokens = getUsageTotal(msg.usage);
+          if (totalTokens > 0) {
+            if (msg.model) currentModel = msg.model;
+            if (msg.provider) currentProvider = msg.provider;
             messages.push({
-              model: msg.model || "unknown",
-              provider: msg.provider || "unknown",
-              usage: msg.usage,
+              model: msg.model || currentModel,
+              provider: msg.provider || currentProvider,
+              usage: { ...msg.usage, totalTokens },
               timestamp: obj.timestamp,
             });
           }
@@ -78,8 +92,12 @@ function parseSessionFile(filePath: string): AggregatedSession | null {
       } catch {}
     }
 
-    if (!header) return null;
-    return { cwd: header.cwd, timestamp: header.timestamp, messages };
+    if (!header && messages.length === 0) return null;
+    return {
+      cwd: header?.cwd ?? projectNameFromFile(filePath),
+      timestamp: header?.timestamp ?? firstTimestamp,
+      messages,
+    };
   } catch {
     return null;
   }
@@ -88,15 +106,12 @@ function parseSessionFile(filePath: string): AggregatedSession | null {
 function collectSessionFiles(sessionsDir: string): string[] {
   const files: string[] = [];
   try {
-    const projectDirs = fs.readdirSync(sessionsDir);
-    for (const projectDir of projectDirs) {
-      const fullProjectDir = path.join(sessionsDir, projectDir);
-      if (!fs.statSync(fullProjectDir).isDirectory()) continue;
-      const sessionFiles = fs.readdirSync(fullProjectDir);
-      for (const sf of sessionFiles) {
-        if (sf.endsWith(".jsonl")) {
-          files.push(path.join(fullProjectDir, sf));
-        }
+    for (const entry of fs.readdirSync(sessionsDir, { withFileTypes: true })) {
+      const fullPath = path.join(sessionsDir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...collectSessionFiles(fullPath));
+      } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+        files.push(fullPath);
       }
     }
   } catch {}
@@ -129,14 +144,15 @@ export function parse(sessionsDir?: string, modelFilter?: string): AgentStats | 
         sessionMatched = true;
 
         const d = dailyMap.get(date) || { tokens: 0, turns: 0, cost: 0 };
-        d.tokens += msg.usage.totalTokens;
+        const totalTokens = getUsageTotal(msg.usage);
+        d.tokens += totalTokens;
         d.turns += 1;
         d.cost += msg.usage.cost?.total || 0;
         dailyMap.set(date, d);
 
         const mk = msg.model;
         const mv = modelMap.get(mk) || { tokens: 0, input: 0, output: 0, cache: 0, cost: 0 };
-        mv.tokens += msg.usage.totalTokens;
+        mv.tokens += totalTokens;
         mv.input += msg.usage.input || 0;
         mv.output += msg.usage.output || 0;
         mv.cache += (msg.usage.cacheRead || 0) + (msg.usage.cacheWrite || 0);
@@ -144,12 +160,12 @@ export function parse(sessionsDir?: string, modelFilter?: string): AgentStats | 
         modelMap.set(mk, mv);
 
         const project = session.cwd === "/" ? "(global)" : session.cwd;
-        projectMap.set(project, (projectMap.get(project) || 0) + msg.usage.totalTokens);
+        projectMap.set(project, (projectMap.get(project) || 0) + totalTokens);
 
         if (msg.timestamp) {
           const hour = new Date(msg.timestamp).getHours();
           const hv = hourlyMap.get(hour) || { tokens: 0, turns: 0 };
-          hv.tokens += msg.usage.totalTokens;
+          hv.tokens += totalTokens;
           hv.turns += 1;
           hourlyMap.set(hour, hv);
         }
@@ -219,4 +235,13 @@ export function parse(sessionsDir?: string, modelFilter?: string): AgentStats | 
   } catch {
     return null;
   }
+}
+
+function getUsageTotal(usage?: PiMessageUsage): number {
+  if (!usage) return 0;
+  return usage.totalTokens || (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0) + (usage.cacheWrite || 0);
+}
+
+function projectNameFromFile(filePath: string): string {
+  return path.basename(path.dirname(filePath)) || "(unknown)";
 }
