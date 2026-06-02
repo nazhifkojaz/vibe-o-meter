@@ -70,14 +70,43 @@ export function filterTimeRange(
   agents: AgentStats[],
   weeks: number
 ): AgentStats[] {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - weeks * 7);
-  const cutoffStr = formatDateLocal(cutoff);
+  const cutoffStr = formatDateLocal(getHeatmapStartDate(weeks));
 
-  return agents.map((agent) => ({
-    ...agent,
-    dailyActivity: agent.dailyActivity.filter((d) => d.date >= cutoffStr),
-  }));
+  return agents.map((agent) => {
+    const dailyActivity = agent.dailyActivity.filter((d) => d.date >= cutoffStr);
+    const isFullRange = dailyActivity.length === agent.dailyActivity.length;
+    const totalTokens = dailyActivity.reduce((sum, day) => sum + day.tokens, 0);
+    const totalCost = dailyActivity.reduce((sum, day) => sum + day.cost, 0);
+    const totalTurns = dailyActivity.reduce((sum, day) => sum + day.turns, 0);
+    const bestDay = dailyActivity.reduce(
+      (best, day) => (day.tokens > best.tokens ? day : best),
+      { date: "", tokens: 0 }
+    );
+
+    return {
+      ...agent,
+      totalTokens,
+      totalInputTokens: isFullRange ? agent.totalInputTokens : 0,
+      totalOutputTokens: isFullRange ? agent.totalOutputTokens : 0,
+      totalCacheTokens: isFullRange ? agent.totalCacheTokens : 0,
+      totalCost,
+      totalTurns,
+      totalSessions: isFullRange ? agent.totalSessions : 0,
+      activeDays: dailyActivity.filter((day) => day.tokens > 0 || day.turns > 0).length,
+      bestDay,
+      dailyActivity,
+      modelActivity: isFullRange ? agent.modelActivity : [],
+      projectActivity: isFullRange ? agent.projectActivity : [],
+      hourlyActivity: isFullRange ? agent.hourlyActivity : [],
+    };
+  });
+}
+
+function getHeatmapStartDate(weeks: number): Date {
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - (weeks - 1) * 7 - today.getDay());
+  return startDate;
 }
 
 export function buildCombined(agents: AgentStats[]): CombinedStats {

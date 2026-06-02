@@ -12,6 +12,7 @@ function parseArgs(): CliOptions {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     switch (arg) {
+      case "--week":
       case "--weeks":
         options.weeks = parseWeeks(readOptionValue(args, ++i, arg));
         break;
@@ -90,7 +91,8 @@ USAGE
   vibe-stats [options]
 
 OPTIONS
-  --weeks <n>        Number of weeks in heatmap (default: 53, like GitHub)
+  --week, --weeks <n>
+                     Number of calendar week columns to show (default: 53)
   --agent <names>    Filter to one or more harnesses, comma-separated (opencode,claude,codex,pi)
   --model <name>     Filter to a specific model (substring match, e.g. gpt-4o)
   --by <dimension>   Breakdown: model, project, hour
@@ -121,12 +123,13 @@ function main() {
   const weeks = options.weeks || 53;
 
   const filtered = filterTimeRange(combined.agents, weeks);
-  const filteredCombined = { ...combined, agents: filtered, combinedDaily: combined.combinedDaily };
+  const filteredCombined = buildCombined(filtered);
+  const renderedCombined = options.by ? combined : filteredCombined;
 
   if (options.json) {
-    console.log(renderJson(combined));
+    console.log(renderJson(filteredCombined));
   } else {
-    console.log(render(filteredCombined, { weeks, by: options.by }));
+    console.log(render(renderedCombined, { weeks, by: options.by }));
   }
 }
 
