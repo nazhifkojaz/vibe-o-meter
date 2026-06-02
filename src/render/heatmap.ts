@@ -175,13 +175,13 @@ export function renderHeatmap(
 
   // Determine date range for title
   const firstDate = grid[0][0]?.date;
-  const lastDate = endDate.toISOString().slice(0, 10);
+  const lastDate = formatDateLocal(endDate);
   let dateRange = "";
   if (firstDate) {
-    const fd = new Date(firstDate);
-    const ld = new Date(lastDate);
-    const fStr = `${MONTH_LABELS[fd.getMonth()].slice(0, 3)} ${fd.getDate()}, ${fd.getFullYear()}`;
-    const lStr = `${MONTH_LABELS[ld.getMonth()].slice(0, 3)} ${ld.getDate()}, ${ld.getFullYear()}`;
+    const fd = parseDateParts(firstDate);
+    const ld = parseDateParts(lastDate);
+    const fStr = `${MONTH_LABELS[fd.month].slice(0, 3)} ${fd.day}, ${fd.year}`;
+    const lStr = `${MONTH_LABELS[ld.month].slice(0, 3)} ${ld.day}, ${ld.year}`;
     dateRange = `${fStr} — ${lStr}`;
   }
 
@@ -195,11 +195,29 @@ export function renderHeatmap(
   // Month header with proper alignment
   lines.push(renderMonthHeader(grid, weeks));
 
-  const showDays = [1, 2, 3, 4, 5, 6, 0]; // Mon-Sun (GitHub order)
-  for (const dow of showDays) {
+  const todayStr = formatDateLocal(new Date());
+  const todayDow = new Date().getDay();
+
+  const firstCell = grid[0][0] || grid[1]?.[0] || grid[2]?.[0];
+  let firstDow = 0;
+  if (firstCell) {
+    const p = parseDateParts(firstCell.date);
+    firstDow = new Date(p.year, p.month, p.day).getDay();
+  }
+  const showDays: number[] = [];
+  for (let d = 0; d < 7; d++) {
+    showDays.push((firstDow + d) % 7);
+  }
+
+  const todayShowIdx = showDays.indexOf(todayDow);
+
+  const labelDows = new Set([showDays[0], showDays[2], showDays[4]]);
+
+  for (let i = 0; i < showDays.length; i++) {
+    const dow = showDays[i];
     const label = DAY_LABELS[dow];
     let prefix = "";
-    if (dow === 1 || dow === 3 || dow === 5) {
+    if (labelDows.has(dow)) {
       prefix = `${ANSI_DIM}${label}${ANSI_RESET} `;
     } else {
       prefix = "    ";
@@ -209,13 +227,19 @@ export function renderHeatmap(
     let currentColor = "";
     for (let w = 0; w < weeks; w++) {
       const cell = grid[dow][w];
-      const tokens = cell?.tokens || 0;
+      const isAfterEnd = w === weeks - 1 && i > todayShowIdx;
+      if (!cell || cell.date > todayStr || isAfterEnd) {
+        bar += "  ";
+        currentColor = "";
+        continue;
+      }
+      const tokens = cell.tokens || 0;
       const level = getLevel(tokens, thresholds);
       let color;
       if (level < 0) {
         color = EMPTY_COLOR;
       } else {
-        const harness = dominantMap.get(cell!.date) || "opencode";
+        const harness = dominantMap.get(cell.date) || "opencode";
         const palette = HARNESS_PALETTES[harness] || DEFAULT_PALETTE;
         color = palette[Math.min(level, palette.length - 1)];
       }
@@ -238,4 +262,16 @@ function formatTokens(n: number): string {
   if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
   if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
   return String(n);
+}
+
+function formatDateLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseDateParts(dateStr: string): { year: number; month: number; day: number } {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return { year: y, month: m - 1, day: d };
 }
