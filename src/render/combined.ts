@@ -7,7 +7,7 @@ import path from "path";
 
 export function render(stats: CombinedStats, options: { weeks: number; by?: "model" | "project" | "hour" }): string {
   if (stats.agents.length === 0) {
-    return "No AI coding agent data found.\n\nMake sure at least one of these is installed:\n  - OpenCode (~/.local/share/opencode/)\n  - Claude Code (~/.claude/)\n  - Codex (~/.codex/)\n  - Pi (~/.pi/agent/)";
+    return "No AI coding agent data found.\n\nChecked the default local data locations:\n  - OpenCode: $XDG_DATA_HOME/opencode/opencode.db, ~/.local/share/opencode/opencode.db, or ~/Library/Application Support/opencode/opencode.db\n  - Claude Code: ~/.claude/stats-cache.json or ~/.claude/projects/\n  - Codex: ~/.codex/state_5.sqlite or ~/.codex/sessions/\n  - Pi: ~/.pi/agent/sessions/\n\nIf your data lives elsewhere, pass an explicit path with --db, --claude, --codex, or --pi.";
   }
 
   const sections: string[] = [];

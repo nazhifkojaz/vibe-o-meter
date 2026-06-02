@@ -29,9 +29,9 @@ vibe-o-meter --weeks 8 --json
 
 By default, `vibe-o-meter` reads local usage data from:
 
-- OpenCode: `~/.local/share/opencode/opencode.db`
-- Claude Code: `~/.claude/stats-cache.json`
-- Codex: `~/.codex/state_5.sqlite` and `~/.codex/sessions`
+- OpenCode: `$XDG_DATA_HOME/opencode/opencode.db`, `~/.local/share/opencode/opencode.db`, or `~/Library/Application Support/opencode/opencode.db`
+- Claude Code: `~/.claude/stats-cache.json` or `~/.claude/projects`
+- Codex: `~/.codex/state_5.sqlite` or `~/.codex/sessions`
 - Pi: `~/.pi/agent/sessions`
 
 Override paths when needed:
@@ -39,7 +39,9 @@ Override paths when needed:
 ```sh
 vibe-o-meter --db /path/to/opencode.db
 vibe-o-meter --claude /path/to/stats-cache.json
+vibe-o-meter --claude /path/to/.claude/projects
 vibe-o-meter --codex /path/to/state_5.sqlite
+vibe-o-meter --codex /path/to/.codex/sessions
 vibe-o-meter --pi /path/to/sessions
 ```
 

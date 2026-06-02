@@ -7,8 +7,8 @@ A terminal tool to read and visualize AI coding agent usage across multiple harn
 | Agent | Token Data | Source | Format |
 |-------|-----------|--------|--------|
 | **OpenCode** | Per-session + per-message (input/output/reasoning/cache) | `~/.local/share/opencode/opencode.db` | SQLite |
-| **Claude Code** | Per-model per-day aggregates + cost | `~/.claude/stats-cache.json` | JSON |
-| **Codex** | Per-thread `tokens_used` counter + timestamps | `~/.codex/state_5.sqlite` | SQLite |
+| **Claude Code** | Per-model per-day aggregates + cost, or raw project logs | `~/.claude/stats-cache.json`, `~/.claude/projects` | JSON/JSONL |
+| **Codex** | Per-thread `tokens_used` counter + timestamps, or raw session token counts | `~/.codex/state_5.sqlite`, `~/.codex/sessions` | SQLite/JSONL |
 | **Pi** | Per-message `usage.totalTokens` in sessions | `~/.pi/agent/sessions/` | JSONL |
 
 ## Dimensions
@@ -32,8 +32,8 @@ src/
   sources/
     registry.ts         — Auto-detect installed agents, return source→parser map
     opencode.ts         — OpenCode: SQLite → DailyActivity[]
-    claude.ts           — Claude Code: stats-cache.json → DailyActivity[]
-    codex.ts            — Codex: state_5.sqlite → DailyActivity[]
+    claude.ts           — Claude Code: stats-cache.json/project JSONL → DailyActivity[]
+    codex.ts            — Codex: state_5.sqlite/session JSONL → DailyActivity[]
     pi.ts               — Pi: session JSONL files → DailyActivity[]
   compute.ts            — Streaks, peaks, daily aggregation
   render/
@@ -131,7 +131,7 @@ session: id, project_id, directory, title, model, cost REAL,
 
 ### Claude Code (`sources/claude.ts`)
 
-**Source:** `~/.claude/stats-cache.json`
+**Source:** `~/.claude/stats-cache.json` or `~/.claude/projects/**/*.jsonl`
 
 **Structure:**
 ```json
@@ -147,11 +147,11 @@ session: id, project_id, directory, title, model, cost REAL,
 1. Sum all models per day from `dailyModelTokens` → daily token totals
 2. Use `modelUsage` for per-model input/output/cache breakdown
 3. Use `dailyActivity` for turn/session counts
-4. No per-project data available
+4. Fall back to project JSONL logs when the cache file is absent
 
 ### Codex (`sources/codex.ts`)
 
-**Source:** `~/.codex/state_5.sqlite` (SQLite)
+**Source:** `~/.codex/state_5.sqlite` (SQLite) or `~/.codex/sessions/**/*.jsonl`
 
 **Threads table schema:**
 ```
@@ -164,7 +164,9 @@ threads: id, tokens_used INTEGER, model, model_provider, cwd,
 - Model: `GROUP BY model`
 - Project: `GROUP BY cwd`
 
-**Limitations:** No input/output/cache breakdown, no turn count, no cost data.
+**Fallback:** If the SQLite DB is absent, parse the last token count from each session JSONL file.
+
+**Limitations:** DB rows do not expose input/output/cache breakdown, no turn count, no cost data. Session JSONL fallback can recover input/output/cache when token-count events are present.
 
 ### Pi (`sources/pi.ts`)
 
@@ -251,8 +253,8 @@ Options:
   --by <dimension>   Breakdown view: model, project, hour
   --json             Output raw JSON
   --db <path>        Override OpenCode DB path
-  --claude <path>    Override Claude stats-cache path
-  --codex <path>     Override Codex DB path
+  --claude <path>    Override Claude data path
+  --codex <path>     Override Codex data path
   --pi <path>        Override Pi sessions dir path
   --help             Show help
 ```

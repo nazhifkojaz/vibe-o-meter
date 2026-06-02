@@ -1,8 +1,11 @@
 import fs from "fs";
 import path from "path";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
+import { formatDateLocal } from "../render/format";
 
-const DEFAULT_PATH = `${process.env.HOME}/.claude/stats-cache.json`;
+const DEFAULT_ROOT = `${process.env.HOME}/.claude`;
+const DEFAULT_CACHE_PATH = path.join(DEFAULT_ROOT, "stats-cache.json");
+const DEFAULT_PROJECTS_DIR = path.join(DEFAULT_ROOT, "projects");
 
 interface ClaudeStatsCache {
   version: number;
@@ -33,8 +36,55 @@ interface ClaudeStatsCache {
   firstSessionDate: string;
 }
 
+interface ClaudeProjectLine {
+  type?: string;
+  timestamp?: string;
+  cwd?: string;
+  sessionId?: string;
+  session_id?: string;
+  message?: {
+    role?: string;
+    model?: string;
+    usage?: Record<string, unknown>;
+  };
+}
+
 export function parse(claudePath?: string, modelFilter?: string): AgentStats | null {
-  const filePath = claudePath || DEFAULT_PATH;
+  const targetPath = claudePath || DEFAULT_ROOT;
+
+  try {
+    const stat = fs.statSync(targetPath);
+    if (stat.isFile()) {
+      return parseStatsCache(targetPath, modelFilter);
+    }
+
+    if (stat.isDirectory()) {
+      const cachePath = path.join(targetPath, "stats-cache.json");
+      const cacheStats = exists(cachePath) ? parseStatsCache(cachePath, modelFilter) : null;
+      if (cacheStats) return cacheStats;
+
+      const projectDirs = targetPath === DEFAULT_ROOT
+        ? [DEFAULT_PROJECTS_DIR]
+        : [path.join(targetPath, "projects"), targetPath];
+
+      for (const projectDir of unique(projectDirs)) {
+        if (!exists(projectDir)) continue;
+        const projectStats = parseProjectLogs(projectDir, modelFilter);
+        if (projectStats) return projectStats;
+      }
+    }
+  } catch {
+    if (!claudePath) {
+      const cacheStats = exists(DEFAULT_CACHE_PATH) ? parseStatsCache(DEFAULT_CACHE_PATH, modelFilter) : null;
+      if (cacheStats) return cacheStats;
+      if (exists(DEFAULT_PROJECTS_DIR)) return parseProjectLogs(DEFAULT_PROJECTS_DIR, modelFilter);
+    }
+  }
+
+  return null;
+}
+
+function parseStatsCache(filePath: string, modelFilter?: string): AgentStats | null {
   try {
     const raw = fs.readFileSync(filePath, "utf8");
     const data: ClaudeStatsCache = JSON.parse(raw);
@@ -149,4 +199,207 @@ export function parse(claudePath?: string, modelFilter?: string): AgentStats | n
   } catch {
     return null;
   }
+}
+
+function parseProjectLogs(projectsDir: string, modelFilter?: string): AgentStats | null {
+  const files = collectJsonlFiles(projectsDir);
+  if (files.length === 0) return null;
+
+  const needle = modelFilter?.toLowerCase();
+  const dailyMap = new Map<string, { tokens: number; turns: number; cost: number }>();
+  const modelMap = new Map<string, { tokens: number; input: number; output: number; cache: number; cost: number }>();
+  const projectMap = new Map<string, number>();
+  const hourlyMap = new Map<number, { tokens: number; turns: number }>();
+  const sessions = new Set<string>();
+
+  let totalTokens = 0;
+  let totalInput = 0;
+  let totalOutput = 0;
+  let totalCache = 0;
+  let totalTurns = 0;
+
+  for (const file of files) {
+    let fileMatched = false;
+    const fallbackProject = projectNameFromFile(projectsDir, file);
+
+    let lines: string[];
+    try {
+      lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
+    } catch {
+      continue;
+    }
+
+    for (const line of lines) {
+      let entry: ClaudeProjectLine;
+      try {
+        entry = JSON.parse(line) as ClaudeProjectLine;
+      } catch {
+        continue;
+      }
+
+      if (entry.type !== "assistant" && entry.message?.role !== "assistant") continue;
+      if (!entry.timestamp || !entry.message?.usage) continue;
+
+      const model = entry.message.model || "unknown";
+      if (needle && !model.toLowerCase().includes(needle)) continue;
+
+      const usage = readUsage(entry.message.usage);
+      if (usage.tokens === 0) continue;
+
+      const date = formatDateLocal(new Date(entry.timestamp));
+      const hour = new Date(entry.timestamp).getHours();
+      const project = normalizeProject(entry.cwd || fallbackProject);
+
+      const daily = dailyMap.get(date) || { tokens: 0, turns: 0, cost: 0 };
+      daily.tokens += usage.tokens;
+      daily.turns += 1;
+      dailyMap.set(date, daily);
+
+      const modelEntry = modelMap.get(model) || { tokens: 0, input: 0, output: 0, cache: 0, cost: 0 };
+      modelEntry.tokens += usage.tokens;
+      modelEntry.input += usage.inputTokens;
+      modelEntry.output += usage.outputTokens;
+      modelEntry.cache += usage.cacheTokens;
+      modelMap.set(model, modelEntry);
+
+      projectMap.set(project, (projectMap.get(project) || 0) + usage.tokens);
+
+      const hourly = hourlyMap.get(hour) || { tokens: 0, turns: 0 };
+      hourly.tokens += usage.tokens;
+      hourly.turns += 1;
+      hourlyMap.set(hour, hourly);
+
+      totalTokens += usage.tokens;
+      totalInput += usage.inputTokens;
+      totalOutput += usage.outputTokens;
+      totalCache += usage.cacheTokens;
+      totalTurns += 1;
+      fileMatched = true;
+
+      const sessionId = entry.sessionId || entry.session_id;
+      if (sessionId) sessions.add(sessionId);
+    }
+
+    if (fileMatched && sessions.size === 0) {
+      sessions.add(file);
+    }
+  }
+
+  if (totalTokens === 0) return null;
+
+  const dailyActivity: DailyActivity[] = Array.from(dailyMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, v]) => ({ date, tokens: v.tokens, turns: v.turns, cost: v.cost }));
+
+  const modelActivity: ModelActivity[] = Array.from(modelMap.entries())
+    .sort(([, a], [, b]) => b.tokens - a.tokens)
+    .map(([model, v]) => ({
+      model,
+      harness: "claude" as const,
+      tokens: v.tokens,
+      inputTokens: v.input,
+      outputTokens: v.output,
+      cacheTokens: v.cache,
+      cost: v.cost,
+    }));
+
+  const projectActivity: ProjectActivity[] = Array.from(projectMap.entries())
+    .sort(([, a], [, b]) => b - a)
+    .map(([project, tokens]) => ({ project, harness: "claude" as const, tokens }));
+
+  const hourlyActivity: HourlyActivity[] = Array.from(hourlyMap.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([hour, v]) => ({ hour, tokens: v.tokens, turns: v.turns }));
+
+  const activeDays = dailyActivity.length;
+  const bestDay = dailyActivity.reduce(
+    (best, d) => (d.tokens > best.tokens ? d : best),
+    { date: "", tokens: 0 }
+  );
+
+  return {
+    harness: "claude",
+    sourcePath: projectsDir,
+    totalTokens,
+    totalInputTokens: totalInput,
+    totalOutputTokens: totalOutput,
+    totalCacheTokens: totalCache,
+    totalCost: 0,
+    totalTurns,
+    totalSessions: sessions.size,
+    activeDays,
+    currentStreak: 0,
+    longestStreak: 0,
+    bestDay,
+    dailyActivity,
+    modelActivity,
+    projectActivity,
+    hourlyActivity,
+  };
+}
+
+function collectJsonlFiles(dir: string): string[] {
+  const files: string[] = [];
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...collectJsonlFiles(fullPath));
+      } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+        files.push(fullPath);
+      }
+    }
+  } catch {}
+  return files;
+}
+
+function readUsage(usage: Record<string, unknown>): {
+  tokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheTokens: number;
+} {
+  const inputTokens = readNumber(usage.input_tokens) || readNumber(usage.inputTokens);
+  const outputTokens = readNumber(usage.output_tokens) || readNumber(usage.outputTokens);
+  const cacheTokens =
+    readNumber(usage.cache_read_input_tokens) +
+    readNumber(usage.cache_creation_input_tokens) +
+    readNumber(usage.cacheReadInputTokens) +
+    readNumber(usage.cacheCreationInputTokens);
+  const reasoningTokens = readNumber(usage.reasoning_output_tokens) || readNumber(usage.reasoningOutputTokens);
+  const computedTokens = inputTokens + outputTokens + cacheTokens + reasoningTokens;
+  const explicitTokens = readNumber(usage.total_tokens) || readNumber(usage.totalTokens);
+
+  return {
+    tokens: computedTokens || explicitTokens,
+    inputTokens,
+    outputTokens,
+    cacheTokens,
+  };
+}
+
+function readNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function projectNameFromFile(projectsDir: string, filePath: string): string {
+  const [project] = path.relative(projectsDir, filePath).split(path.sep);
+  return project || "(unknown)";
+}
+
+function normalizeProject(project: string): string {
+  return project === "/" ? "(global)" : project;
+}
+
+function exists(p: string): boolean {
+  try {
+    fs.accessSync(p, fs.constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values));
 }

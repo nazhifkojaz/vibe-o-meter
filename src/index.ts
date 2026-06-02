@@ -98,8 +98,8 @@ OPTIONS
   --by <dimension>   Breakdown: model, project, hour
   --json             Output raw JSON
   --db <path>        Override OpenCode DB path
-  --claude <path>    Override Claude stats-cache path
-  --codex <path>     Override Codex DB path
+  --claude <path>    Override Claude data path (stats-cache file or projects dir)
+  --codex <path>     Override Codex data path (state DB, .codex dir, or sessions dir)
   --pi <path>        Override Pi sessions dir path
   -h, --help         Show this help
 

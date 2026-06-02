@@ -47,10 +47,16 @@ describe("render", () => {
     const output = render(makeStats(), { weeks: 8 });
 
     expect(output).toContain("No AI coding agent data found.");
+    expect(output).toContain("Checked the default local data locations");
     expect(output).toContain("OpenCode");
+    expect(output).toContain("$XDG_DATA_HOME/opencode/opencode.db");
+    expect(output).toContain("Application Support/opencode/opencode.db");
     expect(output).toContain("Claude Code");
+    expect(output).toContain("~/.claude/projects/");
     expect(output).toContain("Codex");
+    expect(output).toContain("~/.codex/sessions/");
     expect(output).toContain("Pi");
+    expect(output).toContain("--claude");
   });
 });
 
