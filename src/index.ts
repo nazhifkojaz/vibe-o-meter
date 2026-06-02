@@ -3,6 +3,7 @@ import path from "path";
 import { collectAll } from "./sources/registry";
 import { buildCombined, filterTimeRange } from "./compute";
 import { render, renderJson } from "./render/combined";
+import { checkForUpdate } from "./update-check";
 import type { CliOptions } from "./types";
 
 const VALID_BREAKDOWNS = new Set(["model", "project", "hour"]);
@@ -132,9 +133,9 @@ EXAMPLES
 `);
 }
 
-function main() {
+async function main() {
   const options = parseArgs();
-  const agents = collectAll(options);
+  const agents = await collectAll(options);
   const combined = buildCombined(agents);
 
   const weeks = options.weeks || 53;
@@ -148,6 +149,8 @@ function main() {
   } else {
     console.log(render(renderedCombined, { weeks, by: options.by }));
   }
+
+  await checkForUpdate();
 }
 
 main();
