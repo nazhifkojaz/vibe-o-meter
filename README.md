@@ -23,6 +23,8 @@ vibe-stats --by hour
 vibe-stats --weeks 8 --json
 ```
 
+`--weeks` controls the calendar-week heatmap range and the summary totals rendered with it. `--week` is accepted as an alias. Range-filtered JSON clears aggregate fields that cannot be accurately narrowed to the selected dates instead of showing stale all-time breakdowns.
+
 ## Data Sources
 
 By default, `vibe-stats` reads local usage data from:
