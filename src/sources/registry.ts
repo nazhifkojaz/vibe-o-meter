@@ -42,11 +42,13 @@ const SOURCES: SourceConfig[] = [
 ];
 
 export function collectAll(options: CliOptions = {}): AgentStats[] {
-  const filter = options.agent;
+  const filterSet = options.agent
+    ? new Set(options.agent.split(",").map(s => s.trim().toLowerCase()))
+    : null;
   const agents: AgentStats[] = [];
 
   for (const source of SOURCES) {
-    if (filter && source.name !== filter) continue;
+    if (filterSet && !filterSet.has(source.name)) continue;
 
     const customPath = options[source.pathKey];
     const resolvedPath = customPath || source.defaultPath;

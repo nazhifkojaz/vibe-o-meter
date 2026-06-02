@@ -1,5 +1,5 @@
 import { collectAll } from "./sources/registry";
-import { buildCombined, filterTimeRange } from "./compute";
+import { buildCombined, filterTimeRange, filterByModel } from "./compute";
 import { render, renderJson } from "./render/combined";
 import type { CliOptions } from "./types";
 
@@ -14,7 +14,10 @@ function parseArgs(): CliOptions {
         options.weeks = parseInt(args[++i], 10);
         break;
       case "--agent":
-        options.agent = args[++i] as CliOptions["agent"];
+        options.agent = args[++i];
+        break;
+      case "--model":
+        options.model = args[++i];
         break;
       case "--by":
         options.by = args[++i] as CliOptions["by"];
@@ -57,7 +60,8 @@ USAGE
 
 OPTIONS
   --weeks <n>        Number of weeks in heatmap (default: 53, like GitHub)
-  --agent <name>     Filter to single harness (opencode, claude, codex, pi)
+  --agent <names>    Filter to one or more harnesses, comma-separated (opencode,claude,codex,pi)
+  --model <name>     Filter to a specific model (substring match, e.g. gpt-4o)
   --by <dimension>   Breakdown: model, project, hour
   --json             Output raw JSON
   --db <path>        Override OpenCode DB path
@@ -67,18 +71,25 @@ OPTIONS
   -h, --help         Show this help
 
 EXAMPLES
-  vibe-stats                    Combined heatmap + stats
-  vibe-stats --agent opencode   OpenCode only
-  vibe-stats --by model         Token breakdown by model
-  vibe-stats --by project       Token breakdown by project
-  vibe-stats --by hour          Activity by hour of day
-  vibe-stats --weeks 8 --json   8 weeks as JSON
+  vibe-stats                          Combined heatmap + stats
+  vibe-stats --agent opencode         OpenCode only
+  vibe-stats --agent opencode,claude  OpenCode and Claude
+  vibe-stats --model gpt-4o           Filter to gpt-4o model across all agents
+  vibe-stats --by model               Token breakdown by model
+  vibe-stats --by project             Token breakdown by project
+  vibe-stats --by hour                Activity by hour of day
+  vibe-stats --weeks 8 --json         8 weeks as JSON
 `);
 }
 
 function main() {
   const options = parseArgs();
-  const agents = collectAll(options);
+  let agents = collectAll(options);
+
+  if (options.model) {
+    agents = filterByModel(agents, options.model);
+  }
+
   const combined = buildCombined(agents);
 
   const weeks = options.weeks || 53;

@@ -70,7 +70,8 @@ export function harnessDisplayName(harness: string): string {
 
 export interface CliOptions {
   weeks?: number;
-  agent?: HarnessName;
+  agent?: string;
+  model?: string;
   by?: "model" | "project" | "hour";
   json?: boolean;
   db?: string;
