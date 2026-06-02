@@ -36,10 +36,9 @@
     "url": "git+https://github.com/nazhifkojaz/vibe-stats.git"
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0"
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@vitest/coverage-v8": "^4.1.8",
     "bun-types": "^1.3.14",
     "tsup": "^8.5.1",

@@ -1,4 +1,4 @@
-import { Database, queryAll } from "./sqlite";
+import { openDatabase, queryAll } from "./sqlite";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -82,12 +82,12 @@ function findRolloutForThread(sessionsDir: string, threadId: string): string | n
   return null;
 }
 
-export function parse(dbPath?: string, sessionsDir?: string, modelFilter?: string): AgentStats | null {
+export async function parse(dbPath?: string, sessionsDir?: string, modelFilter?: string): Promise<AgentStats | null> {
   const paths = resolveCodexPaths(dbPath, sessionsDir);
   const dbFile = paths.dbFile;
   const sessDir = paths.sessionsDir;
   try {
-    const db = new Database(dbFile, { readonly: true });
+    const { db, close } = await openDatabase(dbFile);
 
     const threads = queryAll(db, `
       SELECT
@@ -101,7 +101,7 @@ export function parse(dbPath?: string, sessionsDir?: string, modelFilter?: strin
       ORDER BY updated_at_ms
     `) as any[];
 
-    db.close();
+    close();
 
     const needle = modelFilter?.toLowerCase();
 

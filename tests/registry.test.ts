@@ -114,7 +114,7 @@ describe("collectAll", () => {
     mkdirSync(path.join(home, ".pi/agent/sessions"), { recursive: true });
 
     const { collectAll } = await importRegistry(home);
-    const agents = collectAll({ model: "sonnet" });
+    const agents = await collectAll({ model: "sonnet" });
 
     expect(agents.map((agent) => agent.harness)).toEqual(["opencode", "claude", "codex", "pi"]);
     expect(opencodeParse).toHaveBeenCalledWith(path.join(home, ".local/share/opencode/opencode.db"), "sonnet");
@@ -131,7 +131,7 @@ describe("collectAll", () => {
     touch(dbPath);
 
     const { collectAll } = await importRegistry(home, { xdgDataHome });
-    const agents = collectAll({ agent: "opencode" });
+    const agents = await collectAll({ agent: "opencode" });
 
     expect(agents.map((agent) => agent.harness)).toEqual(["opencode"]);
     expect(opencodeParse).toHaveBeenCalledWith(dbPath, undefined);
@@ -143,7 +143,7 @@ describe("collectAll", () => {
     touch(dbPath);
 
     const { collectAll } = await importRegistry(home);
-    const agents = collectAll({ agent: "opencode" });
+    const agents = await collectAll({ agent: "opencode" });
 
     expect(agents.map((agent) => agent.harness)).toEqual(["opencode"]);
     expect(opencodeParse).toHaveBeenCalledWith(dbPath, undefined);
@@ -154,7 +154,7 @@ describe("collectAll", () => {
     mkdirSync(path.join(home, ".codex", "sessions"), { recursive: true });
 
     const { collectAll } = await importRegistry(home);
-    const agents = collectAll({ agent: "codex" });
+    const agents = await collectAll({ agent: "codex" });
 
     expect(agents.map((agent) => agent.harness)).toEqual(["codex"]);
     expect(codexParse).toHaveBeenCalledWith(path.join(home, ".codex"), undefined, undefined);
@@ -168,7 +168,7 @@ describe("collectAll", () => {
     mkdirSync(path.join(claudeRoot, "projects"), { recursive: true });
 
     const { collectAll } = await importRegistry(home, { xdgConfigHome });
-    const agents = collectAll({ agent: "claude" });
+    const agents = await collectAll({ agent: "claude" });
 
     expect(agents.map((agent) => agent.harness)).toEqual(["claude"]);
     expect(claudeParse).toHaveBeenCalledWith(claudeRoot, undefined);
@@ -182,7 +182,7 @@ describe("collectAll", () => {
     mkdirSync(path.join(codexRoot, "sessions"), { recursive: true });
 
     const { collectAll } = await importRegistry(home, { appData });
-    const agents = collectAll({ agent: "codex" });
+    const agents = await collectAll({ agent: "codex" });
 
     expect(agents.map((agent) => agent.harness)).toEqual(["codex"]);
     expect(codexParse).toHaveBeenCalledWith(codexRoot, undefined, undefined);
@@ -196,7 +196,7 @@ describe("collectAll", () => {
     mkdirSync(sessionsDir, { recursive: true });
 
     const { collectAll } = await importRegistry(home, { xdgDataHome });
-    const agents = collectAll({ agent: "pi" });
+    const agents = await collectAll({ agent: "pi" });
 
     expect(agents.map((agent) => agent.harness)).toEqual(["pi"]);
     expect(piParse).toHaveBeenCalledWith(sessionsDir, undefined);
@@ -208,7 +208,7 @@ describe("collectAll", () => {
     mkdirSync(sessionsDir, { recursive: true });
 
     const { collectAll } = await importRegistry(home);
-    const agents = collectAll({ agent: "pi" });
+    const agents = await collectAll({ agent: "pi" });
 
     expect(agents.map((agent) => agent.harness)).toEqual(["pi"]);
     expect(piParse).toHaveBeenCalledWith(sessionsDir, undefined);
@@ -217,7 +217,7 @@ describe("collectAll", () => {
   it("skips parsers when default locations are missing", async () => {
     const { collectAll } = await importRegistry(makeHome());
 
-    expect(collectAll()).toEqual([]);
+    expect(await collectAll()).toEqual([]);
     expect(opencodeParse).not.toHaveBeenCalled();
     expect(claudeParse).not.toHaveBeenCalled();
     expect(codexParse).not.toHaveBeenCalled();
@@ -227,7 +227,7 @@ describe("collectAll", () => {
   it("honors explicit paths even when those paths do not exist", async () => {
     const { collectAll } = await importRegistry(makeHome());
 
-    const agents = collectAll({
+    const agents = await collectAll({
       agent: "claude,pi",
       claude: "/custom/claude/projects",
       pi: "/custom/pi/sessions",
@@ -247,7 +247,7 @@ describe("collectAll", () => {
     mkdirSync(path.join(home, ".pi/agent/sessions"), { recursive: true });
 
     const { collectAll } = await importRegistry(home);
-    const agents = collectAll({ agent: " Claude , PI " });
+    const agents = await collectAll({ agent: " Claude , PI " });
 
     expect(agents.map((agent) => agent.harness)).toEqual(["claude", "pi"]);
     expect(claudeParse).toHaveBeenCalledOnce();
@@ -262,7 +262,7 @@ describe("collectAll", () => {
     const { collectAll } = await importRegistry(home);
     claudeParse.mockReturnValueOnce(null);
 
-    expect(collectAll()).toEqual([]);
+    expect(await collectAll()).toEqual([]);
     expect(claudeParse).toHaveBeenCalledOnce();
   });
 });

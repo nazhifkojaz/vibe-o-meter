@@ -1,6 +1,6 @@
 import os from "os";
 import path from "path";
-import { Database, queryAll } from "./sqlite";
+import { openDatabase, queryAll } from "./sqlite";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
 
 const DEFAULT_DB_PATH = path.join(os.homedir(), ".local", "share", "opencode", "opencode.db");
@@ -18,10 +18,10 @@ interface MessageActivitySummary {
   totalSessions: number;
 }
 
-export function parse(dbPath?: string, modelFilter?: string): AgentStats | null {
+export async function parse(dbPath?: string, modelFilter?: string): Promise<AgentStats | null> {
   const path = dbPath || DEFAULT_DB_PATH;
   try {
-    const db = new Database(path, { readonly: true });
+    const { db, close } = await openDatabase(path);
     const needle = modelFilter?.toLowerCase();
     const hasSessionId = hasColumn(db, "message", "session_id");
 
@@ -81,7 +81,7 @@ export function parse(dbPath?: string, modelFilter?: string): AgentStats | null 
       }
     }
 
-    db.close();
+    close();
 
     if (needle && totalTokens === 0) {
       return null;

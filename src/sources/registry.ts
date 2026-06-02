@@ -16,7 +16,7 @@ interface SourceConfig {
   name: HarnessName;
   defaultPaths: string[];
   pathKey: keyof Pick<CliOptions, "db" | "claude" | "codex" | "pi">;
-  parse: (customPath?: string, modelFilter?: string) => AgentStats | null;
+  parse: (customPath?: string, modelFilter?: string) => Promise<AgentStats | null> | AgentStats | null;
 }
 
 const SOURCES: SourceConfig[] = [
@@ -78,7 +78,7 @@ const SOURCES: SourceConfig[] = [
   },
 ];
 
-export function collectAll(options: CliOptions = {}): AgentStats[] {
+export async function collectAll(options: CliOptions = {}): Promise<AgentStats[]> {
   const verbose = options.verbose || false;
   const filterSet = options.agent
     ? new Set(options.agent.split(",").map(s => s.trim().toLowerCase()))
@@ -100,7 +100,7 @@ export function collectAll(options: CliOptions = {}): AgentStats[] {
     }
 
     if (verbose) console.error(`[${source.name}] using path: ${resolvedPath}${customPath ? " (custom)" : " (auto-detected)"}`);
-    const stats = source.parse(resolvedPath, options.model);
+    const stats = await source.parse(resolvedPath, options.model);
     if (stats) {
       agents.push(stats);
     } else if (verbose) {

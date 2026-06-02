@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import Database from "better-sqlite3";
+import initSqlJs from "sql.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse } from "../src/sources/opencode";
 
@@ -13,63 +13,81 @@ afterEach(() => {
   }
 });
 
-function writeMessageOnlyOpenCodeDb(): string {
+async function createTestDb(setup: (db: any) => void): Promise<string> {
   const dir = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-opencode-"));
   tempDirs.push(dir);
   const dbPath = path.join(dir, "opencode.db");
-  const db = new Database(dbPath);
 
-  db.exec(`
-    CREATE TABLE message (
-      time_created INTEGER NOT NULL,
-      session_id TEXT,
-      data TEXT NOT NULL
-    );
-  `);
-
-  const insert = db.prepare("INSERT INTO message (time_created, session_id, data) VALUES (?, ?, ?)");
-  insert.run(
-    new Date(2026, 5, 1, 10, 15).getTime(),
-    "session-1",
-    JSON.stringify({
-      role: "assistant",
-      modelID: "gpt-5",
-      cost: 0.12,
-      tokens: {
-        input: 100,
-        output: 50,
-        reasoning: 25,
-        cache: { read: 20, write: 5 },
-      },
-    })
-  );
-  insert.run(
-    new Date(2026, 5, 1, 11, 30).getTime(),
-    "session-1",
-    JSON.stringify({
-      role: "assistant",
-      modelID: "claude-sonnet",
-      cost: 0.05,
-      tokens: {
-        input: 40,
-        output: 10,
-        cache: { read: 0, write: 0 },
-      },
-    })
-  );
-  insert.run(
-    new Date(2026, 5, 1, 12, 0).getTime(),
-    "session-1",
-    JSON.stringify({ role: "user", tokens: { input: 999 } })
-  );
-
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
+  setup(db);
+  const data = db.export();
   db.close();
+
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  writeFileSync(dbPath, Buffer.from(data));
   return dbPath;
 }
 
+async function writeMessageOnlyOpenCodeDb(): Promise<string> {
+  return createTestDb((db) => {
+    db.run(`
+      CREATE TABLE message (
+        time_created INTEGER NOT NULL,
+        session_id TEXT,
+        data TEXT NOT NULL
+      );
+    `);
+
+    db.run(
+      "INSERT INTO message (time_created, session_id, data) VALUES (?, ?, ?)",
+      [
+        new Date(2026, 5, 1, 10, 15).getTime(),
+        "session-1",
+        JSON.stringify({
+          role: "assistant",
+          modelID: "gpt-5",
+          cost: 0.12,
+          tokens: {
+            input: 100,
+            output: 50,
+            reasoning: 25,
+            cache: { read: 20, write: 5 },
+          },
+        }),
+      ]
+    );
+    db.run(
+      "INSERT INTO message (time_created, session_id, data) VALUES (?, ?, ?)",
+      [
+        new Date(2026, 5, 1, 11, 30).getTime(),
+        "session-1",
+        JSON.stringify({
+          role: "assistant",
+          modelID: "claude-sonnet",
+          cost: 0.05,
+          tokens: {
+            input: 40,
+            output: 10,
+            cache: { read: 0, write: 0 },
+          },
+        }),
+      ]
+    );
+    db.run(
+      "INSERT INTO message (time_created, session_id, data) VALUES (?, ?, ?)",
+      [
+        new Date(2026, 5, 1, 12, 0).getTime(),
+        "session-1",
+        JSON.stringify({ role: "user", tokens: { input: 999 } }),
+      ]
+    );
+  });
+}
+
 describe("opencode.parse", () => {
-  it("falls back to assistant message token rows when session aggregates are unavailable", () => {
-    const stats = parse(writeMessageOnlyOpenCodeDb());
+  it("falls back to assistant message token rows when session aggregates are unavailable", async () => {
+    const stats = await parse(await writeMessageOnlyOpenCodeDb());
 
     expect(stats).not.toBeNull();
     expect(stats).toMatchObject({
@@ -113,8 +131,8 @@ describe("opencode.parse", () => {
     ]));
   });
 
-  it("filters OpenCode message fallback rows by model", () => {
-    const stats = parse(writeMessageOnlyOpenCodeDb(), "gpt");
+  it("filters OpenCode message fallback rows by model", async () => {
+    const stats = await parse(await writeMessageOnlyOpenCodeDb(), "gpt");
 
     expect(stats).not.toBeNull();
     expect(stats).toMatchObject({

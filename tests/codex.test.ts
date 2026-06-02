@@ -49,9 +49,9 @@ function writeCodexSessionsFixture(): string {
 }
 
 describe("codex.parse", () => {
-  it("falls back to Codex session JSONL logs when the SQLite state DB is absent", () => {
+  it("falls back to Codex session JSONL logs when the SQLite state DB is absent", async () => {
     const root = writeCodexSessionsFixture();
-    const stats = parse(root);
+    const stats = await parse(root);
 
     expect(stats).not.toBeNull();
     expect(stats).toMatchObject({
@@ -81,10 +81,10 @@ describe("codex.parse", () => {
     });
   });
 
-  it("accepts the Codex sessions directory directly", () => {
+  it("accepts the Codex sessions directory directly", async () => {
     const root = writeCodexSessionsFixture();
     const sessionsDir = path.join(root, "sessions");
-    const stats = parse(sessionsDir);
+    const stats = await parse(sessionsDir);
 
     expect(stats).not.toBeNull();
     expect(stats).toMatchObject({
@@ -95,8 +95,8 @@ describe("codex.parse", () => {
     });
   });
 
-  it("filters Codex session JSONL logs by model", () => {
-    const stats = parse(writeCodexSessionsFixture(), undefined, "gpt-5");
+  it("filters Codex session JSONL logs by model", async () => {
+    const stats = await parse(writeCodexSessionsFixture(), undefined, "gpt-5");
 
     expect(stats).not.toBeNull();
     expect(stats).toMatchObject({
@@ -105,6 +105,6 @@ describe("codex.parse", () => {
         { model: "gpt-5", harness: "codex", tokens: 200, inputTokens: 100, outputTokens: 50, cacheTokens: 20, cost: 0 },
       ],
     });
-    expect(parse(writeCodexSessionsFixture(), undefined, "claude")).toBeNull();
+    expect(await parse(writeCodexSessionsFixture(), undefined, "claude")).toBeNull();
   });
 });

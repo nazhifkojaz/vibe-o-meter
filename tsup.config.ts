@@ -11,5 +11,5 @@ export default defineConfig({
   splitting: false,
   sourcemap: false,
   minify: false,
-  external: ["bun:sqlite"],
+  external: ["bun:sqlite", "sql.js"],
 });
