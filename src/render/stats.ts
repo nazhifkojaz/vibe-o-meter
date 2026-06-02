@@ -2,14 +2,6 @@ import type { CombinedStats } from "../types";
 import { harnessDisplayName } from "../types";
 import { ANSI_RESET, ANSI_DIM, ANSI_BOLD, formatTokens, HARNESS_PALETTES, DEFAULT_PALETTE } from "./format";
 
-const COLORS = [
-  "\x1b[38;5;41m",
-  "\x1b[38;5;214m",
-  "\x1b[38;5;69m",
-  "\x1b[38;5;176m",
-  "\x1b[38;5;220m",
-];
-
 function renderBar(tokens: number, maxTokens: number, width: number): string {
   const filled = maxTokens > 0 ? Math.max(Math.round((tokens / maxTokens) * width), 1) : 1;
   return "\u2588".repeat(filled) + "\u2591".repeat(width - filled);
@@ -37,7 +29,8 @@ export function renderStats(stats: CombinedStats): string {
 
   for (let i = 0; i < agents.length; i++) {
     const a = agents[i];
-    const color = COLORS[i % COLORS.length];
+    const palette = HARNESS_PALETTES[a.harness] || DEFAULT_PALETTE;
+    const color = palette[Math.min(4, palette.length - 1)];
     const bar = renderBar(a.totalTokens, maxTokens, barWidth);
     const name = harnessDisplayName(a.harness).padEnd(12);
     const tokens = formatTokens(a.totalTokens).padStart(8);

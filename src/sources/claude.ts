@@ -33,25 +33,36 @@ interface ClaudeStatsCache {
   firstSessionDate: string;
 }
 
-export function parse(claudePath?: string): AgentStats | null {
+export function parse(claudePath?: string, modelFilter?: string): AgentStats | null {
   const filePath = claudePath || DEFAULT_PATH;
   try {
     const raw = fs.readFileSync(filePath, "utf8");
     const data: ClaudeStatsCache = JSON.parse(raw);
+    const needle = modelFilter?.toLowerCase();
 
     const dailyTokenMap = new Map<string, number>();
     for (const entry of data.dailyModelTokens) {
       if (!entry.date) continue;
-      const total = Object.values(entry.tokensByModel || {}).reduce((s, v) => s + v, 0);
-      dailyTokenMap.set(entry.date, (dailyTokenMap.get(entry.date) || 0) + total);
+      let total = 0;
+      const tokensByModel = entry.tokensByModel || {};
+      for (const [model, tokens] of Object.entries(tokensByModel)) {
+        if (!needle || model.toLowerCase().includes(needle)) {
+          total += tokens;
+        }
+      }
+      if (total > 0) {
+        dailyTokenMap.set(entry.date, (dailyTokenMap.get(entry.date) || 0) + total);
+      }
     }
 
     const dailyActivityMap = new Map<string, { turns: number; sessions: number }>();
-    for (const entry of data.dailyActivity) {
-      dailyActivityMap.set(entry.date, {
-        turns: entry.messageCount || 0,
-        sessions: entry.sessionCount || 0,
-      });
+    if (!needle) {
+      for (const entry of data.dailyActivity) {
+        dailyActivityMap.set(entry.date, {
+          turns: entry.messageCount || 0,
+          sessions: entry.sessionCount || 0,
+        });
+      }
     }
 
     const allDates = new Set([...dailyTokenMap.keys(), ...dailyActivityMap.keys()]);
@@ -60,12 +71,14 @@ export function parse(claudePath?: string): AgentStats | null {
       .map((date) => ({
         date,
         tokens: dailyTokenMap.get(date) || 0,
-        turns: dailyActivityMap.get(date)?.turns || 0,
+        turns: needle ? 0 : dailyActivityMap.get(date)?.turns || 0,
         cost: 0,
       }))
       .filter((d) => d.tokens > 0 || d.turns > 0);
 
-    const modelActivity: ModelActivity[] = Object.entries(data.modelUsage || {}).map(
+    const modelActivity: ModelActivity[] = Object.entries(data.modelUsage || {})
+      .filter(([model]) => !needle || model.toLowerCase().includes(needle))
+      .map(
       ([model, usage]) => ({
         model,
         harness: "claude" as const,
@@ -79,15 +92,20 @@ export function parse(claudePath?: string): AgentStats | null {
 
     const utcOffset = -new Date().getTimezoneOffset() / 60;
     const realTotalTokens = modelActivity.reduce((s, m) => s + m.tokens, 0);
+    if (needle && realTotalTokens === 0) {
+      return null;
+    }
     const totalHourTurns = Object.values(data.hourCounts || {}).reduce((s: number, v: any) => s + v, 0);
 
-    const hourlyActivity: HourlyActivity[] = Object.entries(data.hourCounts || {}).map(
-      ([hour, count]) => ({
-        hour: (parseInt(hour, 10) + utcOffset + 24) % 24,
-        tokens: totalHourTurns > 0 ? Math.round((count as number / totalHourTurns) * realTotalTokens) : 0,
-        turns: count as number,
-      })
-    );
+    const hourlyActivity: HourlyActivity[] = needle
+      ? []
+      : Object.entries(data.hourCounts || {}).map(
+          ([hour, count]) => ({
+            hour: (parseInt(hour, 10) + utcOffset + 24) % 24,
+            tokens: totalHourTurns > 0 ? Math.round((count as number / totalHourTurns) * realTotalTokens) : 0,
+            turns: count as number,
+          })
+        );
     const dailySumFromDailyModel = dailyActivity.reduce((s, d) => s + d.tokens, 0);
     const scaleFactor = dailySumFromDailyModel > 0 ? realTotalTokens / dailySumFromDailyModel : 1;
 
@@ -101,9 +119,9 @@ export function parse(claudePath?: string): AgentStats | null {
     const totalInput = modelActivity.reduce((s, m) => s + m.inputTokens, 0);
     const totalOutput = modelActivity.reduce((s, m) => s + m.outputTokens, 0);
     const totalCache = modelActivity.reduce((s, m) => s + m.cacheTokens, 0);
-    const totalTurns = data.totalMessages || dailyActivity.reduce((s, d) => s + d.turns, 0);
-    const totalSessions = data.totalSessions || 0;
-    const activeDays = new Set([...dailyTokenMap.keys(), ...dailyActivityMap.keys()]).size;
+    const totalTurns = needle ? 0 : data.totalMessages || dailyActivity.reduce((s, d) => s + d.turns, 0);
+    const totalSessions = needle ? 0 : data.totalSessions || 0;
+    const activeDays = dailyActivity.length;
     const bestDay = dailyActivity.reduce(
       (best, d) => (d.tokens > best.tokens ? d : best),
       { date: "", tokens: 0 }

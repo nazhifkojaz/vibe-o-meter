@@ -3,6 +3,7 @@ import { harnessDisplayName } from "../types";
 import { renderHeatmap } from "./heatmap";
 import { renderStats } from "./stats";
 import { renderByModel, renderByProject, renderByHour } from "./breakdown";
+import path from "path";
 
 export function render(stats: CombinedStats, options: { weeks: number; by?: "model" | "project" | "hour" }): string {
   if (stats.agents.length === 0) {
@@ -29,5 +30,35 @@ export function render(stats: CombinedStats, options: { weeks: number; by?: "mod
 }
 
 export function renderJson(stats: CombinedStats): string {
-  return JSON.stringify(stats, null, 2);
+  const safeStats: CombinedStats = {
+    ...stats,
+    agents: stats.agents.map((agent) => ({
+      ...agent,
+      sourcePath: redactPath(agent.sourcePath),
+      projectActivity: agent.projectActivity.map((project) => ({
+        ...project,
+        project: redactProjectPath(project.project),
+      })),
+    })),
+  };
+
+  return JSON.stringify(safeStats, null, 2);
+}
+
+function redactPath(value: string): string {
+  const home = process.env.HOME || "";
+  if (home && (value === home || value.startsWith(home + path.sep))) {
+    return "~" + value.slice(home.length);
+  }
+
+  if (path.isAbsolute(value)) {
+    return path.join(path.parse(value).root, "...", path.basename(value));
+  }
+
+  return value;
+}
+
+function redactProjectPath(value: string): string {
+  if (!path.isAbsolute(value)) return value;
+  return path.basename(value) || redactPath(value);
 }

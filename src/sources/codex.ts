@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import { Database, queryAll } from "./sqlite";
 import fs from "fs";
 import path from "path";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
@@ -68,13 +68,13 @@ function findRolloutForThread(sessionsDir: string, threadId: string): string | n
   return null;
 }
 
-export function parse(dbPath?: string, sessionsDir?: string): AgentStats | null {
+export function parse(dbPath?: string, sessionsDir?: string, modelFilter?: string): AgentStats | null {
   const dbFile = dbPath || DEFAULT_DB_PATH;
   const sessDir = sessionsDir || DEFAULT_SESSIONS_DIR;
   try {
     const db = new Database(dbFile, { readonly: true });
 
-    const threads = db.query(`
+    const threads = queryAll(db, `
       SELECT
         id,
         COALESCE(model, 'unknown') as model,
@@ -84,9 +84,11 @@ export function parse(dbPath?: string, sessionsDir?: string): AgentStats | null 
       FROM threads
       WHERE tokens_used > 0 OR updated_at_ms IS NOT NULL
       ORDER BY updated_at_ms
-    `).all() as any[];
+    `) as any[];
 
     db.close();
+
+    const needle = modelFilter?.toLowerCase();
 
     const dailyMap = new Map<string, { tokens: number; sessions: number }>();
     const modelMap = new Map<string, { tokens: number; count: number }>();
@@ -100,6 +102,9 @@ export function parse(dbPath?: string, sessionsDir?: string): AgentStats | null 
 
     for (const thread of threads) {
       if (!thread.updated_at_ms) continue;
+
+      const threadModel = (thread.model || "unknown").toLowerCase();
+      if (needle && !threadModel.includes(needle)) continue;
 
       const rolloutPath = findRolloutForThread(sessDir, thread.id);
       let tokens: number;
@@ -179,6 +184,10 @@ export function parse(dbPath?: string, sessionsDir?: string): AgentStats | null 
       (best, d) => (d.tokens > best.tokens ? d : best),
       { date: "", tokens: 0 }
     );
+
+    if (needle && totalTokens === 0) {
+      return null;
+    }
 
     return {
       harness: "codex",

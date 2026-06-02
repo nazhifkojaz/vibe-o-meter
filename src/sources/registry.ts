@@ -11,7 +11,7 @@ interface SourceConfig {
   name: HarnessName;
   defaultPath: string;
   pathKey: keyof Pick<CliOptions, "db" | "claude" | "codex" | "pi">;
-  parse: (customPath?: string) => AgentStats | null;
+  parse: (customPath?: string, modelFilter?: string) => AgentStats | null;
 }
 
 const SOURCES: SourceConfig[] = [
@@ -31,7 +31,7 @@ const SOURCES: SourceConfig[] = [
     name: "codex",
     defaultPath: `${HOME}/.codex/state_5.sqlite`,
     pathKey: "codex",
-    parse: (customPath?: string) => codex.parse(customPath, `${HOME}/.codex/sessions`),
+    parse: (customPath?: string, modelFilter?: string) => codex.parse(customPath, `${HOME}/.codex/sessions`, modelFilter),
   },
   {
     name: "pi",
@@ -55,7 +55,7 @@ export function collectAll(options: CliOptions = {}): AgentStats[] {
 
     if (!customPath && !exists(resolvedPath)) continue;
 
-    const stats = source.parse(customPath || undefined);
+    const stats = source.parse(customPath || undefined, options.model);
     if (stats) agents.push(stats);
   }
 

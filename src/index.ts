@@ -1,7 +1,9 @@
 import { collectAll } from "./sources/registry";
-import { buildCombined, filterTimeRange, filterByModel } from "./compute";
+import { buildCombined, filterTimeRange } from "./compute";
 import { render, renderJson } from "./render/combined";
 import type { CliOptions } from "./types";
+
+const VALID_BREAKDOWNS = new Set(["model", "project", "hour"]);
 
 function parseArgs(): CliOptions {
   const args = process.argv.slice(2);
@@ -11,31 +13,31 @@ function parseArgs(): CliOptions {
     const arg = args[i];
     switch (arg) {
       case "--weeks":
-        options.weeks = parseInt(args[++i], 10);
+        options.weeks = parseWeeks(readOptionValue(args, ++i, arg));
         break;
       case "--agent":
-        options.agent = args[++i];
+        options.agent = readOptionValue(args, ++i, arg);
         break;
       case "--model":
-        options.model = args[++i];
+        options.model = readOptionValue(args, ++i, arg);
         break;
       case "--by":
-        options.by = args[++i] as CliOptions["by"];
+        options.by = parseBreakdown(readOptionValue(args, ++i, arg));
         break;
       case "--json":
         options.json = true;
         break;
       case "--db":
-        options.db = args[++i];
+        options.db = readOptionValue(args, ++i, arg);
         break;
       case "--claude":
-        options.claude = args[++i];
+        options.claude = readOptionValue(args, ++i, arg);
         break;
       case "--codex":
-        options.codex = args[++i];
+        options.codex = readOptionValue(args, ++i, arg);
         break;
       case "--pi":
-        options.pi = args[++i];
+        options.pi = readOptionValue(args, ++i, arg);
         break;
       case "--help":
       case "-h":
@@ -49,6 +51,35 @@ function parseArgs(): CliOptions {
   }
 
   return options;
+}
+
+function readOptionValue(args: string[], index: number, option: string): string {
+  const value = args[index];
+  if (!value || value.startsWith("--")) {
+    fail(`Missing value for ${option}`);
+  }
+  return value;
+}
+
+function parseWeeks(value: string): number {
+  const weeks = Number(value);
+  if (!Number.isInteger(weeks) || weeks < 1) {
+    fail("--weeks must be a positive integer");
+  }
+  return weeks;
+}
+
+function parseBreakdown(value: string): CliOptions["by"] {
+  if (!VALID_BREAKDOWNS.has(value)) {
+    fail("--by must be one of: model, project, hour");
+  }
+  return value as CliOptions["by"];
+}
+
+function fail(message: string): never {
+  console.error(message);
+  printHelp();
+  process.exit(1);
 }
 
 function printHelp() {
@@ -84,12 +115,7 @@ EXAMPLES
 
 function main() {
   const options = parseArgs();
-  let agents = collectAll(options);
-
-  if (options.model) {
-    agents = filterByModel(agents, options.model);
-  }
-
+  const agents = collectAll(options);
   const combined = buildCombined(agents);
 
   const weeks = options.weeks || 53;

@@ -32,6 +32,7 @@ interface PiLine {
   type: string;
   role?: string;
   timestamp?: string;
+  cwd?: string;
   message?: {
     role?: string;
     model?: string;
@@ -102,7 +103,7 @@ function collectSessionFiles(sessionsDir: string): string[] {
   return files;
 }
 
-export function parse(sessionsDir?: string): AgentStats | null {
+export function parse(sessionsDir?: string, modelFilter?: string): AgentStats | null {
   const dir = sessionsDir || DEFAULT_SESSIONS_DIR;
   try {
     if (!fs.existsSync(dir)) return null;
@@ -114,15 +115,19 @@ export function parse(sessionsDir?: string): AgentStats | null {
     const projectMap = new Map<string, number>();
     const hourlyMap = new Map<number, { tokens: number; turns: number }>();
     let totalSessions = 0;
+    const needle = modelFilter?.toLowerCase();
 
     for (const file of files) {
       const session = parseSessionFile(file);
       if (!session || session.messages.length === 0) continue;
-      totalSessions++;
 
       const date = formatDateLocal(new Date(session.timestamp));
+      let sessionMatched = false;
 
       for (const msg of session.messages) {
+        if (needle && !(msg.model || "unknown").toLowerCase().includes(needle)) continue;
+        sessionMatched = true;
+
         const d = dailyMap.get(date) || { tokens: 0, turns: 0, cost: 0 };
         d.tokens += msg.usage.totalTokens;
         d.turns += 1;
@@ -149,6 +154,8 @@ export function parse(sessionsDir?: string): AgentStats | null {
           hourlyMap.set(hour, hv);
         }
       }
+
+      if (sessionMatched) totalSessions++;
     }
 
     const dailyActivity: DailyActivity[] = Array.from(dailyMap.entries())
@@ -185,6 +192,10 @@ export function parse(sessionsDir?: string): AgentStats | null {
       (best, d) => (d.tokens > best.tokens ? d : best),
       { date: "", tokens: 0 }
     );
+
+    if (modelFilter && totalTokens === 0) {
+      return null;
+    }
 
     return {
       harness: "pi",

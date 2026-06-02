@@ -2,17 +2,34 @@
   "name": "vibe-stats",
   "version": "0.1.0",
   "description": "Terminal tool to visualize AI coding agent usage across OpenCode, Claude Code, Codex, and Pi",
-  "main": "src/index.ts",
+  "type": "module",
+  "main": "dist/index.js",
   "bin": {
-    "vibe-stats": "src/index.ts"
+    "vibe-stats": "dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run build",
     "start": "bun run src/index.ts",
     "dev": "bun run --watch src/index.ts"
   },
-  "keywords": ["ai", "coding", "agent", "stats", "heatmap", "terminal"],
+  "keywords": ["ai", "coding", "agent", "stats", "heatmap", "terminal", "vibe-stats"],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nazhifkojaz/vibe-stats.git"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0"
+  },
   "devDependencies": {
-    "bun-types": "^1.3.14"
+    "@types/better-sqlite3": "^7.6.13",
+    "bun-types": "^1.3.14",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   }
 }
