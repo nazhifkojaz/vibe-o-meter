@@ -1,3 +1,5 @@
 node_modules/
 dist/
+coverage/
 .code-review-graph/
+opencode.json
