@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import fs from "fs";
 import path from "path";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
+import { formatDateLocal } from "../render/format";
 
 const DEFAULT_DB_PATH = `${process.env.HOME}/.codex/state_5.sqlite`;
 const DEFAULT_SESSIONS_DIR = `${process.env.HOME}/.codex/sessions`;
@@ -201,11 +202,4 @@ export function parse(dbPath?: string, sessionsDir?: string): AgentStats | null 
   } catch {
     return null;
   }
-}
-
-function formatDateLocal(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }

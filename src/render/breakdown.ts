@@ -1,24 +1,9 @@
 import type { AgentStats, ModelActivity, ProjectActivity, HourlyActivity } from "../types";
 import { harnessDisplayName } from "../types";
+import { ANSI_RESET, ANSI_DIM, ANSI_BOLD, ANSI_CYAN, formatTokens } from "./format";
 
-const ANSI_RESET = "\x1b[0m";
-const ANSI_DIM = "\x1b[2m";
-const ANSI_BOLD = "\x1b[1m";
-const ANSI_CYAN = "\x1b[36m";
 const BAR_CHAR = "\u2588";
 const BAR_EMPTY = "\u2591";
-
-function formatTokens(n: number): string {
-  if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
-  return String(n);
-}
-
-function formatCost(n: number): string {
-  if (n === 0) return "";
-  return " $" + n.toFixed(2);
-}
 
 export function renderByModel(agents: AgentStats[]): string {
   const modelMap = new Map<string, { tokens: number; harnesses: Set<string> }>();
@@ -156,11 +141,6 @@ export function renderByHour(agents: AgentStats[]): string {
   const quietest = Math.min(...hours.filter(v => v > 0));
   const quietIdx = hours.indexOf(quietest);
   const quietVal = hasTokens ? formatTokens(quietest) : String(quietest);
-  const estimatedAgents = agents.filter(a => {
-    const hourTokens = a.hourlyActivity.reduce((s, h) => s + h.tokens, 0);
-    const hourTurns = a.hourlyActivity.reduce((s, h) => s + h.turns, 0);
-    return hourTokens > 0 && hourTurns > 0 && a.totalTokens > 0 && hourTokens === a.totalTokens;
-  }).map(a => a.harness);
 
   lines.push(
     `  ${ANSI_DIM}Peak: ${formatHour(peakIdx)} (${peakVal}) | Quietest: ${formatHour(quietIdx)} (${quietVal})${ANSI_RESET}`

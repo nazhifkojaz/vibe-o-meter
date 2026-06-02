@@ -1,36 +1,17 @@
-import type { DailyActivity, AgentStats, HarnessName } from "../types";
+import type { DailyActivity, AgentStats } from "../types";
+import { ANSI_RESET, ANSI_DIM, ANSI_BOLD, formatTokens, formatDateLocal, HARNESS_PALETTES, DEFAULT_PALETTE } from "./format";
 
-const LEVELS = ["\u2591", "\u2592", "\u2593", "\u2588"];
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_LABELS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
 
-const ANSI_DIM = "\x1b[2m";
-const ANSI_BOLD = "\x1b[1m";
-const ANSI_RESET = "\x1b[0m";
 const EMPTY_COLOR = "\x1b[38;5;240m";
 const BLOCK = "\u25A0";
 
-const HARNESS_PALETTES: Record<string, string[]> = {
-  opencode: ["\x1b[38;5;22m", "\x1b[38;5;28m", "\x1b[38;5;34m", "\x1b[38;5;40m", "\x1b[38;5;82m", "\x1b[38;5;118m", "\x1b[38;5;155m", "\x1b[38;5;191m"],
-  claude:   ["\x1b[38;5;52m", "\x1b[38;5;94m", "\x1b[38;5;130m", "\x1b[38;5;166m", "\x1b[38;5;202m", "\x1b[38;5;208m", "\x1b[38;5;214m", "\x1b[38;5;220m"],
-  codex:    ["\x1b[38;5;17m", "\x1b[38;5;19m", "\x1b[38;5;27m", "\x1b[38;5;33m", "\x1b[38;5;39m", "\x1b[38;5;69m", "\x1b[38;5;75m", "\x1b[38;5;117m"],
-  pi:       ["\x1b[38;5;53m", "\x1b[38;5;96m", "\x1b[38;5;132m", "\x1b[38;5;168m", "\x1b[38;5;169m", "\x1b[38;5;176m", "\x1b[38;5;218m", "\x1b[38;5;224m"],
-};
-
-const HARNESS_COLORS: Record<string, string> = {
-  opencode: "\x1b[38;5;41m",
-  claude: "\x1b[38;5;214m",
-  codex: "\x1b[38;5;69m",
-  pi: "\x1b[38;5;176m",
-};
-
-const DEFAULT_PALETTE = HARNESS_PALETTES.opencode;
-
-const LABEL_WIDTH = 4; // "Mon " = 4 display columns
-const CELL_WIDTH = 2;  // block char + space
+const LABEL_WIDTH = 4;
+const CELL_WIDTH = 2;
 
 function getLevel(tokens: number, thresholds: number[]): number {
   if (tokens === 0) return -1;
@@ -70,7 +51,7 @@ function dateToGrid(weeks: number): { startDate: Date; endDate: Date; grid: (Dai
     const weekIdx = Math.floor(diffMs / (7 * 86400000));
     if (weekIdx >= 0 && weekIdx < weeks) {
       grid[dow][weekIdx] = {
-        date: formatDate(d),
+        date: formatDateLocal(d),
         tokens: 0,
         turns: 0,
         cost: 0,
@@ -80,13 +61,6 @@ function dateToGrid(weeks: number): { startDate: Date; endDate: Date; grid: (Dai
   }
 
   return { startDate, endDate, grid };
-}
-
-function formatDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 function renderMonthHeader(grid: (DailyActivity | null)[][], weeks: number): string {
@@ -255,20 +229,6 @@ export function renderHeatmap(
   }
 
   return lines.join("\n");
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
-  return String(n);
-}
-
-function formatDateLocal(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 function parseDateParts(dateStr: string): { year: number; month: number; day: number } {

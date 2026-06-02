@@ -1,9 +1,7 @@
 import type { CombinedStats } from "../types";
 import { harnessDisplayName } from "../types";
+import { ANSI_RESET, ANSI_DIM, ANSI_BOLD, formatTokens, HARNESS_PALETTES, DEFAULT_PALETTE } from "./format";
 
-const ANSI_RESET = "\x1b[0m";
-const ANSI_DIM = "\x1b[2m";
-const ANSI_BOLD = "\x1b[1m";
 const COLORS = [
   "\x1b[38;5;41m",
   "\x1b[38;5;214m",
@@ -12,33 +10,13 @@ const COLORS = [
   "\x1b[38;5;220m",
 ];
 
-function formatTokens(n: number): string {
-  if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
-  return String(n);
-}
-
-function formatCost(n: number): string {
-  if (n === 0) return "n/a";
-  return "$" + n.toFixed(2);
-}
-
 function renderBar(tokens: number, maxTokens: number, width: number): string {
   const filled = maxTokens > 0 ? Math.max(Math.round((tokens / maxTokens) * width), 1) : 1;
   return "\u2588".repeat(filled) + "\u2591".repeat(width - filled);
 }
 
-const PALETTES: Record<string, string[]> = {
-  opencode: ["\x1b[38;5;22m", "\x1b[38;5;28m", "\x1b[38;5;34m", "\x1b[38;5;40m", "\x1b[38;5;82m", "\x1b[38;5;118m", "\x1b[38;5;155m", "\x1b[38;5;191m"],
-  claude:   ["\x1b[38;5;52m", "\x1b[38;5;94m", "\x1b[38;5;130m", "\x1b[38;5;166m", "\x1b[38;5;202m", "\x1b[38;5;208m", "\x1b[38;5;214m", "\x1b[38;5;220m"],
-  codex:    ["\x1b[38;5;17m", "\x1b[38;5;19m", "\x1b[38;5;27m", "\x1b[38;5;33m", "\x1b[38;5;39m", "\x1b[38;5;69m", "\x1b[38;5;75m", "\x1b[38;5;117m"],
-  pi:       ["\x1b[38;5;53m", "\x1b[38;5;96m", "\x1b[38;5;132m", "\x1b[38;5;168m", "\x1b[38;5;169m", "\x1b[38;5;176m", "\x1b[38;5;218m", "\x1b[38;5;224m"],
-};
-const DEFAULT_PALETTE = PALETTES.opencode;
-
 function renderLegend(harness: string): string {
-  const palette = PALETTES[harness] || DEFAULT_PALETTE;
+  const palette = HARNESS_PALETTES[harness] || DEFAULT_PALETTE;
   const parts = [`${ANSI_DIM}Less${ANSI_RESET}`];
   for (let j = 0; j < 4; j++) {
     const c = palette[Math.min(j * 2, palette.length - 1)];

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
+import { formatDateLocal } from "../render/format";
 
 const DEFAULT_SESSIONS_DIR = `${process.env.HOME}/.pi/agent/sessions`;
 
@@ -207,11 +208,4 @@ export function parse(sessionsDir?: string): AgentStats | null {
   } catch {
     return null;
   }
-}
-
-function formatDateLocal(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }

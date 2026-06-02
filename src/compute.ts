@@ -1,4 +1,5 @@
 import type { DailyActivity, AgentStats, CombinedStats } from "./types";
+import { formatDateLocal } from "./render/format";
 
 export function computeStreaks(daily: DailyActivity[]): {
   currentStreak: number;
@@ -10,12 +11,12 @@ export function computeStreaks(daily: DailyActivity[]): {
   if (activeDates.size === 0) return { currentStreak: 0, longestStreak: 0 };
 
   const today = new Date();
-  const todayStr = formatDate(today);
+  const todayStr = formatDateLocal(today);
 
   let currentStreak = 0;
   const d = new Date(today);
   while (true) {
-    const ds = formatDate(d);
+    const ds = formatDateLocal(d);
     if (activeDates.has(ds)) {
       currentStreak++;
       d.setDate(d.getDate() - 1);
@@ -41,13 +42,6 @@ export function computeStreaks(daily: DailyActivity[]): {
   longestStreak = Math.max(longestStreak, run);
 
   return { currentStreak, longestStreak };
-}
-
-function formatDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 export function computeAgentStreaks(agent: AgentStats): AgentStats {
@@ -78,12 +72,43 @@ export function filterTimeRange(
 ): AgentStats[] {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - weeks * 7);
-  const cutoffStr = formatDate(cutoff);
+  const cutoffStr = formatDateLocal(cutoff);
 
   return agents.map((agent) => ({
     ...agent,
     dailyActivity: agent.dailyActivity.filter((d) => d.date >= cutoffStr),
   }));
+}
+
+export function filterByModel(agents: AgentStats[], modelQuery: string): AgentStats[] {
+  const needle = modelQuery.toLowerCase();
+  const result: AgentStats[] = [];
+  for (const agent of agents) {
+    const matching = agent.modelActivity.filter((m) => m.model.toLowerCase().includes(needle));
+    if (matching.length === 0) continue;
+    const totalTokens = matching.reduce((s, m) => s + m.tokens, 0);
+    const totalInputTokens = matching.reduce((s, m) => s + m.inputTokens, 0);
+    const totalOutputTokens = matching.reduce((s, m) => s + m.outputTokens, 0);
+    const totalCacheTokens = matching.reduce((s, m) => s + m.cacheTokens, 0);
+    const totalCost = matching.reduce((s, m) => s + m.cost, 0);
+    result.push({
+      ...agent,
+      totalTokens,
+      totalInputTokens,
+      totalOutputTokens,
+      totalCacheTokens,
+      totalCost,
+      modelActivity: matching,
+      projectActivity: [],
+      dailyActivity: [],
+      hourlyActivity: [],
+      activeDays: 0,
+      currentStreak: 0,
+      longestStreak: 0,
+      bestDay: { date: "", tokens: 0 },
+    });
+  }
+  return result;
 }
 
 export function buildCombined(agents: AgentStats[]): CombinedStats {
