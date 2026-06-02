@@ -1,4 +1,5 @@
 import type { CombinedStats } from "../types";
+import { harnessDisplayName } from "../types";
 
 const ANSI_RESET = "\x1b[0m";
 const ANSI_DIM = "\x1b[2m";
@@ -60,23 +61,22 @@ export function renderStats(stats: CombinedStats): string {
     const a = agents[i];
     const color = COLORS[i % COLORS.length];
     const bar = renderBar(a.totalTokens, maxTokens, barWidth);
-    const name = a.harness.padEnd(10);
+    const name = harnessDisplayName(a.harness).padEnd(12);
     const tokens = formatTokens(a.totalTokens).padStart(8);
     const days = String(a.activeDays).padStart(3) + " active days";
     const streak = String(a.longestStreak).padStart(2) + "d streak";
     const peak = formatTokens(a.bestDay.tokens).padStart(8);
-    const cost = formatCost(a.totalCost).padStart(8);
     const legend = renderLegend(a.harness);
 
     lines.push(
-      `  ${color}${name}${ANSI_RESET} ${color}${bar}${ANSI_RESET} ${tokens} tokens | ${days} | ${streak} | peak ${peak} | ${cost}  ${legend}`
+      `  ${color}${name}${ANSI_RESET} ${color}${bar}${ANSI_RESET} ${tokens} tokens | peak ${peak} | ${days} | ${streak}  ${legend}`
     );
   }
 
   const sep = "  " + "\u2500".repeat(70);
   lines.push(sep);
   lines.push(
-    `  ${ANSI_BOLD}TOTAL${ANSI_RESET}     ${formatTokens(stats.allTimeTokens).padStart(8)} tokens | ${stats.allTimeActiveDays} active days | ${formatCost(stats.allTimeCost).padStart(8)} cost`
+    `  ${ANSI_BOLD}TOTAL${ANSI_RESET}        ${" ".repeat(barWidth)} ${formatTokens(stats.allTimeTokens).padStart(8)} tokens | ${String(stats.allTimeActiveDays).padStart(3)} active days`
   );
 
   return lines.join("\n");

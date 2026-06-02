@@ -1,4 +1,5 @@
 import type { CombinedStats } from "../types";
+import { harnessDisplayName } from "../types";
 import { renderHeatmap } from "./heatmap";
 import { renderStats } from "./stats";
 import { renderByModel, renderByProject, renderByHour } from "./breakdown";
@@ -17,7 +18,7 @@ export function render(stats: CombinedStats, options: { weeks: number; by?: "mod
   } else if (options.by === "hour") {
     sections.push(renderByHour(stats.agents));
   } else {
-    const harnesses = stats.agents.map((a) => a.harness).join(", ");
+    const harnesses = stats.agents.map((a) => harnessDisplayName(a.harness)).join(", ");
     const title = `Vibe Stats  [${harnesses}]`;
     sections.push(renderHeatmap(stats.combinedDaily, options.weeks, title, stats.allTimeTokens, stats.agents));
     sections.push("");
