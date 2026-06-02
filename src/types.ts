@@ -57,6 +57,17 @@ export interface CombinedStats {
 
 export type HarnessName = "opencode" | "claude" | "codex" | "pi";
 
+const DISPLAY_NAMES: Record<string, string> = {
+  opencode: "opencode",
+  claude: "claude code",
+  codex: "codex",
+  pi: "pi",
+};
+
+export function harnessDisplayName(harness: string): string {
+  return DISPLAY_NAMES[harness] || harness;
+}
+
 export interface CliOptions {
   weeks?: number;
   agent?: HarnessName;
