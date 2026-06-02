@@ -85,10 +85,10 @@ function fail(message: string): never {
 
 function printHelp() {
   console.log(`
-vibe-stats — AI coding agent usage visualizer
+vibe-o-meter — AI coding agent usage visualizer
 
 USAGE
-  vibe-stats [options]
+  vibe-o-meter [options]
 
 OPTIONS
   --week, --weeks <n>
@@ -104,14 +104,14 @@ OPTIONS
   -h, --help         Show this help
 
 EXAMPLES
-  vibe-stats                          Combined heatmap + stats
-  vibe-stats --agent opencode         OpenCode only
-  vibe-stats --agent opencode,claude  OpenCode and Claude
-  vibe-stats --model gpt-4o           Filter to gpt-4o model across all agents
-  vibe-stats --by model               Token breakdown by model
-  vibe-stats --by project             Token breakdown by project
-  vibe-stats --by hour                Activity by hour of day
-  vibe-stats --weeks 8 --json         8 weeks as JSON
+  vibe-o-meter                          Combined heatmap + stats
+  vibe-o-meter --agent opencode         OpenCode only
+  vibe-o-meter --agent opencode,claude  OpenCode and Claude
+  vibe-o-meter --model gpt-4o           Filter to gpt-4o model across all agents
+  vibe-o-meter --by model               Token breakdown by model
+  vibe-o-meter --by project             Token breakdown by project
+  vibe-o-meter --by hour                Activity by hour of day
+  vibe-o-meter --weeks 8 --json         8 weeks as JSON
 `);
 }
 

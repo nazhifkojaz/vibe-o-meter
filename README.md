@@ -1,4 +1,4 @@
-# vibe-stats
+# vibe-o-meter
 
 Terminal tool to visualize AI coding agent usage across OpenCode, Claude Code, Codex, and Pi.
 
@@ -7,27 +7,27 @@ Terminal tool to visualize AI coding agent usage across OpenCode, Claude Code, C
 Run without installing:
 
 ```sh
-npx vibe-stats
-bunx vibe-stats
+npx vibe-o-meter
+bunx vibe-o-meter
 ```
 
 Common options:
 
 ```sh
-vibe-stats --agent opencode
-vibe-stats --agent opencode,claude
-vibe-stats --model gpt-4o
-vibe-stats --by model
-vibe-stats --by project
-vibe-stats --by hour
-vibe-stats --weeks 8 --json
+vibe-o-meter --agent opencode
+vibe-o-meter --agent opencode,claude
+vibe-o-meter --model gpt-4o
+vibe-o-meter --by model
+vibe-o-meter --by project
+vibe-o-meter --by hour
+vibe-o-meter --weeks 8 --json
 ```
 
 `--weeks` controls the calendar-week heatmap range and the summary totals rendered with it. `--week` is accepted as an alias. Range-filtered JSON clears aggregate fields that cannot be accurately narrowed to the selected dates instead of showing stale all-time breakdowns.
 
 ## Data Sources
 
-By default, `vibe-stats` reads local usage data from:
+By default, `vibe-o-meter` reads local usage data from:
 
 - OpenCode: `~/.local/share/opencode/opencode.db`
 - Claude Code: `~/.claude/stats-cache.json`
@@ -37,10 +37,10 @@ By default, `vibe-stats` reads local usage data from:
 Override paths when needed:
 
 ```sh
-vibe-stats --db /path/to/opencode.db
-vibe-stats --claude /path/to/stats-cache.json
-vibe-stats --codex /path/to/state_5.sqlite
-vibe-stats --pi /path/to/sessions
+vibe-o-meter --db /path/to/opencode.db
+vibe-o-meter --claude /path/to/stats-cache.json
+vibe-o-meter --codex /path/to/state_5.sqlite
+vibe-o-meter --pi /path/to/sessions
 ```
 
 ## Privacy

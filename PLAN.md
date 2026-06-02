@@ -1,4 +1,4 @@
-# vibe-stats — Implementation Plan
+# vibe-o-meter — Implementation Plan
 
 A terminal tool to read and visualize AI coding agent usage across multiple harnesses (OpenCode, Claude Code, Codex, Pi). Think GitHub contribution heatmap, but for your AI-assisted coding activity.
 
@@ -243,7 +243,7 @@ GitHub-style contribution grid:
 ## CLI Interface
 
 ```
-Usage: vibe-stats [options]
+Usage: vibe-o-meter [options]
 
 Options:
   --weeks <n>        Number of weeks to show (default: auto-fit terminal)

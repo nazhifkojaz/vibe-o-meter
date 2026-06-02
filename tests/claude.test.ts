@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 function writeClaudeFixture(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "vibe-stats-claude-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-"));
   tempDirs.push(dir);
   const filePath = path.join(dir, "stats-cache.json");
 

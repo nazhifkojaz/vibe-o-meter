@@ -20,7 +20,7 @@ export function render(stats: CombinedStats, options: { weeks: number; by?: "mod
     sections.push(renderByHour(stats.agents));
   } else {
     const harnesses = stats.agents.map((a) => harnessDisplayName(a.harness)).join(", ");
-    const title = `Vibe Stats  [${harnesses}]`;
+    const title = `Vibe-o-meter  [${harnesses}]`;
     sections.push(renderHeatmap(stats.combinedDaily, options.weeks, title, stats.allTimeTokens, stats.agents));
     sections.push("");
     sections.push(renderStats(stats));
