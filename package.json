@@ -11,5 +11,8 @@
     "dev": "bun run --watch src/index.ts"
   },
   "keywords": ["ai", "coding", "agent", "stats", "heatmap", "terminal"],
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "bun-types": "^1.3.14"
+  }
 }
