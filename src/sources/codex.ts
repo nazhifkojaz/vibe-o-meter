@@ -127,7 +127,7 @@ export function parse(dbPath?: string, sessionsDir?: string): AgentStats | null 
       totalCache += cacheTokens;
       totalSessions++;
 
-      const date = new Date(thread.updated_at_ms).toISOString().slice(0, 10);
+      const date = formatDateLocal(new Date(thread.updated_at_ms));
       const d = dailyMap.get(date) || { tokens: 0, sessions: 0 };
       d.tokens += tokens;
       d.sessions += 1;
@@ -201,4 +201,11 @@ export function parse(dbPath?: string, sessionsDir?: string): AgentStats | null 
   } catch {
     return null;
   }
+}
+
+function formatDateLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }

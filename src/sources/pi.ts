@@ -119,7 +119,7 @@ export function parse(sessionsDir?: string): AgentStats | null {
       if (!session || session.messages.length === 0) continue;
       totalSessions++;
 
-      const date = session.timestamp.slice(0, 10);
+      const date = formatDateLocal(new Date(session.timestamp));
 
       for (const msg of session.messages) {
         const d = dailyMap.get(date) || { tokens: 0, turns: 0, cost: 0 };
@@ -141,13 +141,11 @@ export function parse(sessionsDir?: string): AgentStats | null {
         projectMap.set(project, (projectMap.get(project) || 0) + msg.usage.totalTokens);
 
         if (msg.timestamp) {
-          const hour = parseInt(msg.timestamp.slice(11, 13), 10);
-          if (!isNaN(hour)) {
-            const hv = hourlyMap.get(hour) || { tokens: 0, turns: 0 };
-            hv.tokens += msg.usage.totalTokens;
-            hv.turns += 1;
-            hourlyMap.set(hour, hv);
-          }
+          const hour = new Date(msg.timestamp).getHours();
+          const hv = hourlyMap.get(hour) || { tokens: 0, turns: 0 };
+          hv.tokens += msg.usage.totalTokens;
+          hv.turns += 1;
+          hourlyMap.set(hour, hv);
         }
       }
     }
@@ -209,4 +207,11 @@ export function parse(sessionsDir?: string): AgentStats | null {
   } catch {
     return null;
   }
+}
+
+function formatDateLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }

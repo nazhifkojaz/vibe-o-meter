@@ -77,15 +77,17 @@ export function parse(claudePath?: string): AgentStats | null {
       })
     );
 
+    const utcOffset = -new Date().getTimezoneOffset() / 60;
+    const realTotalTokens = modelActivity.reduce((s, m) => s + m.tokens, 0);
+    const totalHourTurns = Object.values(data.hourCounts || {}).reduce((s: number, v: any) => s + v, 0);
+
     const hourlyActivity: HourlyActivity[] = Object.entries(data.hourCounts || {}).map(
       ([hour, count]) => ({
-        hour: parseInt(hour, 10),
-        tokens: 0,
-        turns: count,
+        hour: (parseInt(hour, 10) + utcOffset + 24) % 24,
+        tokens: totalHourTurns > 0 ? Math.round((count as number / totalHourTurns) * realTotalTokens) : 0,
+        turns: count as number,
       })
     );
-
-    const realTotalTokens = modelActivity.reduce((s, m) => s + m.tokens, 0);
     const dailySumFromDailyModel = dailyActivity.reduce((s, d) => s + d.tokens, 0);
     const scaleFactor = dailySumFromDailyModel > 0 ? realTotalTokens / dailySumFromDailyModel : 1;
 
