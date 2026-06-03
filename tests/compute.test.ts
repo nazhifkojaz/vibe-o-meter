@@ -52,6 +52,25 @@ describe("computeStreaks", () => {
       ])
     ).toEqual({ currentStreak: 0, longestStreak: 0 });
   });
+
+  it("computes longest streak across a gap", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 5, 12));
+
+    expect(
+      computeStreaks([
+        { date: "2026-05-28", tokens: 10, turns: 1, cost: 0 },
+        { date: "2026-05-29", tokens: 10, turns: 1, cost: 0 },
+        { date: "2026-05-30", tokens: 10, turns: 1, cost: 0 },
+        { date: "2026-06-04", tokens: 10, turns: 1, cost: 0 },
+        { date: "2026-06-05", tokens: 10, turns: 1, cost: 0 },
+      ])
+    ).toEqual({ currentStreak: 2, longestStreak: 3 });
+  });
+
+  it("returns zero streaks for empty daily activity", () => {
+    expect(computeStreaks([])).toEqual({ currentStreak: 0, longestStreak: 0 });
+  });
 });
 
 describe("aggregateDaily", () => {

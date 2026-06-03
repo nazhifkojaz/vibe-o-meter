@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, renderJson } from "../src/render/combined";
 import type { AgentStats, CombinedStats } from "../src/types";
 
 const ORIGINAL_HOME = process.env.HOME;
+const ORIGINAL_COLUMNS = process.stdout.columns;
 
 function makeStats(overrides: Partial<CombinedStats> = {}): CombinedStats {
   return {
@@ -40,6 +41,8 @@ function makeAgent(overrides: Partial<AgentStats> = {}): AgentStats {
 
 afterEach(() => {
   process.env.HOME = ORIGINAL_HOME;
+  Object.defineProperty(process.stdout, "columns", { value: ORIGINAL_COLUMNS, writable: true });
+  vi.useRealTimers();
 });
 
 describe("render", () => {
@@ -59,6 +62,69 @@ describe("render", () => {
     expect(output).toContain("$XDG_DATA_HOME/pi/agent/sessions");
     expect(output).toContain("--verbose");
     expect(output).toContain("--claude");
+  });
+  it("caps heatmap weeks to fit narrow terminals", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 2, 12));
+    Object.defineProperty(process.stdout, "columns", { value: 60, writable: true });
+
+    const output = render(makeStats({
+      agents: [makeAgent({
+        totalTokens: 100,
+        dailyActivity: [{ date: "2026-06-01", tokens: 100, turns: 1, cost: 0 }],
+      })],
+      allTimeTokens: 100,
+    }), { weeks: 53 });
+
+    expect(output).toContain("Vibe-o-meter");
+    const lines = output.split("\n");
+    const dataLines = lines.filter((l) => l.includes("\u25A0") || l.includes("\u2591"));
+    for (const line of dataLines) {
+      const visible = line.replace(/\x1b\[[0-9;]*m/g, "");
+      expect(visible.length).toBeLessThanOrEqual(62);
+    }
+  });
+
+  it("adapts stats bar width for narrow terminals", () => {
+    Object.defineProperty(process.stdout, "columns", { value: 80, writable: true });
+
+    const output = render(makeStats({
+      agents: [makeAgent({
+        harness: "opencode",
+        totalTokens: 5000,
+        activeDays: 42,
+        longestStreak: 7,
+        bestDay: { date: "2026-06-01", tokens: 2000 },
+        dailyActivity: [{ date: "2026-06-01", tokens: 5000, turns: 5, cost: 0 }],
+      })],
+      allTimeTokens: 5000,
+      allTimeActiveDays: 42,
+    }), { weeks: 8 });
+
+    expect(output).not.toContain("Less");
+    expect(output).not.toContain("More");
+    expect(output).not.toContain("peak");
+  });
+
+  it("shows full stats on wide terminals", () => {
+    Object.defineProperty(process.stdout, "columns", { value: 120, writable: true });
+
+    const output = render(makeStats({
+      agents: [makeAgent({
+        harness: "opencode",
+        totalTokens: 5000,
+        activeDays: 42,
+        longestStreak: 7,
+        bestDay: { date: "2026-06-01", tokens: 2000 },
+        dailyActivity: [{ date: "2026-06-01", tokens: 5000, turns: 5, cost: 0 }],
+      })],
+      allTimeTokens: 5000,
+      allTimeActiveDays: 42,
+    }), { weeks: 8 });
+
+    expect(output).toContain("Less");
+    expect(output).toContain("More");
+    expect(output).toContain("peak");
   });
 });
 

@@ -10,6 +10,7 @@ const ORIGINAL_XDG_DATA_HOME = process.env.XDG_DATA_HOME;
 const ORIGINAL_APPDATA = process.env.APPDATA;
 const tempDirs: string[] = [];
 
+const ORIGINAL_CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;
 let opencodeParse: ReturnType<typeof vi.fn>;
 let claudeParse: ReturnType<typeof vi.fn>;
 let codexParse: ReturnType<typeof vi.fn>;
@@ -25,6 +26,7 @@ afterEach(() => {
   restoreEnv("XDG_CONFIG_HOME", ORIGINAL_XDG_CONFIG_HOME);
   restoreEnv("XDG_DATA_HOME", ORIGINAL_XDG_DATA_HOME);
   restoreEnv("APPDATA", ORIGINAL_APPDATA);
+  restoreEnv("CLAUDE_CONFIG_DIR", ORIGINAL_CLAUDE_CONFIG_DIR);
 
   while (tempDirs.length > 0) {
     rmSync(tempDirs.pop()!, { recursive: true, force: true });
@@ -264,5 +266,31 @@ describe("collectAll", () => {
 
     expect(await collectAll()).toEqual([]);
     expect(claudeParse).toHaveBeenCalledOnce();
+  });
+
+  it("detects Claude under CLAUDE_CONFIG_DIR env var", async () => {
+    const home = makeHome();
+    const claudeDir = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-config-"));
+    tempDirs.push(claudeDir);
+    mkdirSync(path.join(claudeDir, "projects"), { recursive: true });
+
+    const { collectAll } = await importRegistry(home);
+    process.env.CLAUDE_CONFIG_DIR = claudeDir;
+
+    vi.resetModules();
+    opencodeParse = vi.fn(() => makeStats("opencode"));
+    claudeParse = vi.fn(() => makeStats("claude"));
+    codexParse = vi.fn(() => makeStats("codex"));
+    piParse = vi.fn(() => makeStats("pi"));
+    vi.doMock("../src/sources/opencode", () => ({ parse: opencodeParse }));
+    vi.doMock("../src/sources/claude", () => ({ parse: claudeParse }));
+    vi.doMock("../src/sources/codex", () => ({ parse: codexParse }));
+    vi.doMock("../src/sources/pi", () => ({ parse: piParse }));
+
+    const { collectAll: collectAll2 } = await import("../src/sources/registry");
+    const agents = await collectAll2({ agent: "claude" });
+
+    expect(agents.map((agent) => agent.harness)).toEqual(["claude"]);
+    expect(claudeParse).toHaveBeenCalledWith(claudeDir, undefined);
   });
 });
