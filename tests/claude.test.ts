@@ -98,6 +98,130 @@ function writeClaudeProjectsFixture(): string {
   return root;
 }
 
+function writeTopLevelUsageFixture(): string {
+  const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-top-"));
+  tempDirs.push(root);
+
+  const projectDir = path.join(root, "projects", "-home-alice-app");
+  mkdirSync(projectDir, { recursive: true });
+  const filePath = path.join(projectDir, "session.jsonl");
+
+  writeFileSync(filePath, [
+    JSON.stringify({
+      type: "assistant",
+      timestamp: "2026-06-01T10:00:00",
+      role: "assistant",
+      model: "claude-sonnet-4",
+      usage: {
+        input_tokens: 500,
+        output_tokens: 200,
+        cache_read_input_tokens: 50,
+      },
+      sessionId: "session-top",
+    }),
+    JSON.stringify({
+      type: "user",
+      timestamp: "2026-06-01T09:59:00",
+      role: "user",
+      message: { role: "user", content: "hello" },
+    }),
+  ].join("\n"));
+
+  return root;
+}
+
+function writeStaleCacheWithJsonlFixture(): { root: string; cacheDir: string } {
+  const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-stale-"));
+  tempDirs.push(root);
+
+  const projectDir = path.join(root, "projects", "-home-alice-app");
+  mkdirSync(projectDir, { recursive: true });
+  writeFileSync(path.join(projectDir, "session.jsonl"), [
+    JSON.stringify({
+      type: "assistant",
+      timestamp: "2026-06-01T10:00:00",
+      cwd: "/home/alice/app",
+      sessionId: "session-1",
+      message: {
+        role: "assistant",
+        model: "claude-sonnet-4",
+        usage: { input_tokens: 1000, output_tokens: 500 },
+      },
+    }),
+    JSON.stringify({
+      type: "assistant",
+      timestamp: "2026-06-02T10:00:00",
+      cwd: "/home/alice/app",
+      sessionId: "session-2",
+      message: {
+        role: "assistant",
+        model: "claude-sonnet-4",
+        usage: { input_tokens: 2000, output_tokens: 1000 },
+      },
+    }),
+  ].join("\n"));
+
+  writeFileSync(path.join(root, "stats-cache.json"), JSON.stringify({
+    version: 1,
+    lastComputedDate: "2026-06-01",
+    dailyActivity: [
+      { date: "2026-06-01", messageCount: 1, sessionCount: 1, toolCallCount: 0 },
+    ],
+    dailyModelTokens: [
+      { date: "2026-06-01", tokensByModel: { "claude-sonnet-4": 300 } },
+    ],
+    modelUsage: {
+      "claude-sonnet-4": {
+        inputTokens: 200,
+        outputTokens: 100,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+        costUSD: 0.5,
+      },
+    },
+    totalSessions: 1,
+    totalMessages: 1,
+    hourCounts: { "10": 1 },
+    firstSessionDate: "2026-06-01",
+  }));
+
+  return { root, cacheDir: root };
+}
+
+function writeEmptyCacheWithJsonlFixture(): string {
+  const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-empty-cache-"));
+  tempDirs.push(root);
+
+  const projectDir = path.join(root, "projects", "-home-alice-app");
+  mkdirSync(projectDir, { recursive: true });
+  writeFileSync(path.join(projectDir, "session.jsonl"), [
+    JSON.stringify({
+      type: "assistant",
+      timestamp: "2026-06-01T10:00:00",
+      sessionId: "session-1",
+      message: {
+        role: "assistant",
+        model: "claude-sonnet-4",
+        usage: { input_tokens: 800, output_tokens: 400 },
+      },
+    }),
+  ].join("\n"));
+
+  writeFileSync(path.join(root, "stats-cache.json"), JSON.stringify({
+    version: 1,
+    lastComputedDate: "2026-06-01",
+    dailyActivity: [],
+    dailyModelTokens: [],
+    modelUsage: {},
+    totalSessions: 0,
+    totalMessages: 0,
+    hourCounts: {},
+    firstSessionDate: "",
+  }));
+
+  return root;
+}
+
 describe("claude.parse", () => {
   it("parses Claude stats-cache totals and daily activity", () => {
     const stats = parse(writeClaudeFixture());
@@ -246,5 +370,364 @@ describe("claude.parse", () => {
       totalTurns: 2,
       totalSessions: 1,
     });
+  });
+
+  it("parses JSONL entries with top-level usage and model (no message wrapper)", () => {
+    const root = writeTopLevelUsageFixture();
+    const stats = parse(root);
+
+    expect(stats).not.toBeNull();
+    expect(stats).toMatchObject({
+      harness: "claude",
+      totalTokens: 750,
+      totalInputTokens: 500,
+      totalOutputTokens: 200,
+      totalCacheTokens: 50,
+      totalTurns: 1,
+      totalSessions: 1,
+    });
+    expect(stats!.modelActivity).toEqual([
+      { model: "claude-sonnet-4", harness: "claude", tokens: 750, inputTokens: 500, outputTokens: 200, cacheTokens: 50, cost: 0 },
+    ]);
+  });
+
+  it("prefers JSONL over stale stats-cache when JSONL has more tokens", () => {
+    const { root } = writeStaleCacheWithJsonlFixture();
+    const stats = parse(root);
+
+    expect(stats).not.toBeNull();
+    expect(stats!.totalTokens).toBe(4500);
+    expect(stats!.dailyActivity).toHaveLength(2);
+    expect(stats!.totalTurns).toBe(2);
+  });
+
+  it("uses JSONL when stats-cache exists but has zero tokens", () => {
+    const root = writeEmptyCacheWithJsonlFixture();
+    const stats = parse(root);
+
+    expect(stats).not.toBeNull();
+    expect(stats!.totalTokens).toBe(1200);
+    expect(stats!.totalInputTokens).toBe(800);
+    expect(stats!.totalOutputTokens).toBe(400);
+  });
+
+  it("returns null when given a nonexistent path", () => {
+    expect(parse("/nonexistent/claude/path")).toBeNull();
+  });
+
+  it("returns null for a directory with no JSONL files and no cache", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-empty-"));
+    tempDirs.push(root);
+    mkdirSync(path.join(root, "projects"), { recursive: true });
+
+    expect(parse(root)).toBeNull();
+  });
+
+  it("skips user-type entries in JSONL files", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-useronly-"));
+    tempDirs.push(root);
+    const projectDir = path.join(root, "projects", "-home-alice-app");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, "session.jsonl"), [
+      JSON.stringify({
+        type: "user",
+        timestamp: "2026-06-01T10:00:00",
+        message: { role: "user", content: "hello" },
+      }),
+    ].join("\n"));
+
+    expect(parse(root)).toBeNull();
+  });
+
+  it("excludes synthetic model from model activity", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-synthetic-"));
+    tempDirs.push(root);
+    const projectDir = path.join(root, "projects", "-home-user-app");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, "session.jsonl"), [
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T10:00:00",
+        sessionId: "session-1",
+        message: {
+          role: "assistant",
+          model: "<synthetic>",
+          usage: { input_tokens: 0, output_tokens: 0 },
+        },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T10:01:00",
+        sessionId: "session-1",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+      }),
+    ].join("\n"));
+
+    const stats = parse(root);
+    expect(stats).not.toBeNull();
+    expect(stats!.modelActivity).toHaveLength(1);
+    expect(stats!.modelActivity[0].model).toBe("claude-sonnet-4");
+    expect(stats!.totalTokens).toBe(150);
+  });
+
+  it("includes reasoning tokens in total", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-reasoning-"));
+    tempDirs.push(root);
+    const projectDir = path.join(root, "projects", "-home-user-app");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, "session.jsonl"), [
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T10:00:00",
+        sessionId: "session-1",
+        message: {
+          role: "assistant",
+          model: "claude-opus-4-7",
+          usage: {
+            input_tokens: 100,
+            output_tokens: 50,
+            reasoning_output_tokens: 500,
+          },
+        },
+      }),
+    ].join("\n"));
+
+    const stats = parse(root);
+    expect(stats).not.toBeNull();
+    expect(stats!.totalTokens).toBe(650);
+    expect(stats!.modelActivity[0].tokens).toBe(650);
+  });
+
+  it("tracks multiple projects separately in projectActivity", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-multi-"));
+    tempDirs.push(root);
+
+    const projectDir1 = path.join(root, "projects", "-home-alice-project-a");
+    mkdirSync(projectDir1, { recursive: true });
+    writeFileSync(path.join(projectDir1, "session.jsonl"), [
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T10:00:00",
+        cwd: "/home/alice/project-a",
+        sessionId: "session-a",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+      }),
+    ].join("\n"));
+
+    const projectDir2 = path.join(root, "projects", "-home-alice-project-b");
+    mkdirSync(projectDir2, { recursive: true });
+    writeFileSync(path.join(projectDir2, "session.jsonl"), [
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T11:00:00",
+        cwd: "/home/alice/project-b",
+        sessionId: "session-b",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          usage: { input_tokens: 200, output_tokens: 100 },
+        },
+      }),
+    ].join("\n"));
+
+    const stats = parse(root);
+    expect(stats).not.toBeNull();
+    expect(stats!.projectActivity).toHaveLength(2);
+    expect(stats!.totalSessions).toBe(2);
+    expect(stats!.totalTokens).toBe(450);
+    const projects = stats!.projectActivity.map((p) => p.project);
+    expect(projects).toContain("/home/alice/project-a");
+    expect(projects).toContain("/home/alice/project-b");
+  });
+
+  it("ignores system, attachment, and other non-assistant entry types", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-types-"));
+    tempDirs.push(root);
+    const projectDir = path.join(root, "projects", "-home-user-app");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, "session.jsonl"), [
+      JSON.stringify({ type: "system", timestamp: "2026-06-01T09:00:00", message: "init" }),
+      JSON.stringify({ type: "attachment", timestamp: "2026-06-01T09:05:00" }),
+      JSON.stringify({ type: "file-history-snapshot", timestamp: "2026-06-01T09:10:00" }),
+      JSON.stringify({ type: "ai-title", timestamp: "2026-06-01T09:15:00" }),
+      JSON.stringify({ type: "permission-mode", timestamp: "2026-06-01T09:20:00" }),
+    ].join("\n"));
+
+    expect(parse(root)).toBeNull();
+  });
+
+  it("falls back to total_tokens when individual token fields are absent", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-total-"));
+    tempDirs.push(root);
+    const projectDir = path.join(root, "projects", "-home-user-app");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, "session.jsonl"), [
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T10:00:00",
+        sessionId: "session-1",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          usage: { total_tokens: 9999 },
+        },
+      }),
+    ].join("\n"));
+
+    const stats = parse(root);
+    expect(stats).not.toBeNull();
+    expect(stats!.totalTokens).toBe(9999);
+  });
+
+  it("parses stats-cache v3 with extra fields without errors", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-v3-"));
+    tempDirs.push(dir);
+    writeFileSync(path.join(dir, "stats-cache.json"), JSON.stringify({
+      version: 3,
+      lastComputedDate: "2026-06-02",
+      dailyActivity: [
+        { date: "2026-06-01", messageCount: 2, sessionCount: 1, toolCallCount: 1 },
+      ],
+      dailyModelTokens: [
+        { date: "2026-06-01", tokensByModel: { "claude-opus-4-7": 500 } },
+      ],
+      modelUsage: {
+        "claude-opus-4-7": {
+          inputTokens: 200,
+          outputTokens: 100,
+          cacheReadInputTokens: 150,
+          cacheCreationInputTokens: 50,
+          costUSD: 1.5,
+        },
+      },
+      totalSessions: 1,
+      totalMessages: 2,
+      hourCounts: { "10": 2 },
+      firstSessionDate: "2026-06-01",
+      longestSession: 3600,
+      totalSpeculationTimeSavedMs: 5000,
+    }));
+
+    const stats = parse(dir);
+    expect(stats).not.toBeNull();
+    expect(stats!.totalTokens).toBe(500);
+    expect(stats!.totalCost).toBeCloseTo(1.5);
+    expect(stats!.modelActivity).toHaveLength(1);
+    expect(stats!.modelActivity[0].model).toBe("claude-opus-4-7");
+  });
+
+  it("excludes synthetic model tokens from stats-cache daily totals", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-cache-synthetic-"));
+    tempDirs.push(dir);
+    writeFileSync(path.join(dir, "stats-cache.json"), JSON.stringify({
+      version: 3,
+      lastComputedDate: "2026-06-02",
+      dailyActivity: [
+        { date: "2026-06-01", messageCount: 2, sessionCount: 1, toolCallCount: 0 },
+      ],
+      dailyModelTokens: [
+        { date: "2026-06-01", tokensByModel: { "<synthetic>": 10000, "claude-sonnet-4": 150 } },
+      ],
+      modelUsage: {
+        "<synthetic>": {
+          inputTokens: 10000,
+          outputTokens: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+          costUSD: 0,
+        },
+        "claude-sonnet-4": {
+          inputTokens: 100,
+          outputTokens: 50,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+          costUSD: 0.1,
+        },
+      },
+      totalSessions: 1,
+      totalMessages: 2,
+      hourCounts: { "10": 2 },
+      firstSessionDate: "2026-06-01",
+    }));
+
+    const stats = parse(dir);
+    expect(stats).not.toBeNull();
+    expect(stats!.totalTokens).toBe(150);
+    expect(stats!.dailyActivity).toEqual([
+      { date: "2026-06-01", tokens: 150, turns: 2, cost: 0 },
+    ]);
+    expect(stats!.modelActivity).toEqual([
+      { model: "claude-sonnet-4", harness: "claude", tokens: 150, inputTokens: 100, outputTokens: 50, cacheTokens: 0, cost: 0.1 },
+    ]);
+  });
+
+  it("recognizes session_id in snake_case format", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-sid-"));
+    tempDirs.push(root);
+    const projectDir = path.join(root, "projects", "-home-user-app");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, "session.jsonl"), [
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T10:00:00",
+        session_id: "snake-case-session",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+      }),
+    ].join("\n"));
+
+    const stats = parse(root);
+    expect(stats).not.toBeNull();
+    expect(stats!.totalSessions).toBe(1);
+  });
+
+  it("aggregates across multiple JSONL files in the same project", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-claude-multi-jsonl-"));
+    tempDirs.push(root);
+    const projectDir = path.join(root, "projects", "-home-user-app");
+    mkdirSync(projectDir, { recursive: true });
+
+    writeFileSync(path.join(projectDir, "session-1.jsonl"), [
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T10:00:00",
+        sessionId: "s1",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+      }),
+    ].join("\n"));
+
+    writeFileSync(path.join(projectDir, "session-2.jsonl"), [
+      JSON.stringify({
+        type: "assistant",
+        timestamp: "2026-06-01T11:00:00",
+        sessionId: "s2",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          usage: { input_tokens: 200, output_tokens: 100 },
+        },
+      }),
+    ].join("\n"));
+
+    const stats = parse(root);
+    expect(stats).not.toBeNull();
+    expect(stats!.totalTokens).toBe(450);
+    expect(stats!.totalSessions).toBe(2);
+    expect(stats!.totalTurns).toBe(2);
   });
 });

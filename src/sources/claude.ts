@@ -35,6 +35,8 @@ interface ClaudeStatsCache {
   totalMessages: number;
   hourCounts: Record<string, number>;
   firstSessionDate: string;
+  longestSession?: number;
+  totalSpeculationTimeSavedMs?: number;
 }
 
 interface ClaudeProjectLine {
@@ -113,7 +115,7 @@ function parseStatsCache(filePath: string, modelFilter?: string): AgentStats | n
       let total = 0;
       const tokensByModel = entry.tokensByModel || {};
       for (const [model, tokens] of Object.entries(tokensByModel)) {
-        if (!needle || model.toLowerCase().includes(needle)) {
+        if (model !== "<synthetic>" && (!needle || model.toLowerCase().includes(needle))) {
           total += tokens;
         }
       }
@@ -144,7 +146,7 @@ function parseStatsCache(filePath: string, modelFilter?: string): AgentStats | n
       .filter((d) => d.tokens > 0 || d.turns > 0);
 
     const modelActivity: ModelActivity[] = Object.entries(data.modelUsage || {})
-      .filter(([model]) => !needle || model.toLowerCase().includes(needle))
+      .filter(([model]) => model !== "<synthetic>" && (!needle || model.toLowerCase().includes(needle)))
       .map(
       ([model, usage]) => ({
         model,
@@ -260,6 +262,7 @@ function parseProjectLogs(projectsDir: string, modelFilter?: string): AgentStats
       if (!entry.timestamp || !usageData) continue;
 
       const model = entry.message?.model || entry.model || "unknown";
+      if (model === "<synthetic>") continue;
       if (needle && !model.toLowerCase().includes(needle)) continue;
 
       const usage = readUsage(usageData);
@@ -377,6 +380,7 @@ function readUsage(usage: Record<string, unknown>): {
   inputTokens: number;
   outputTokens: number;
   cacheTokens: number;
+  reasoningTokens: number;
 } {
   const inputTokens = readNumber(usage.input_tokens) || readNumber(usage.inputTokens);
   const outputTokens = readNumber(usage.output_tokens) || readNumber(usage.outputTokens);
@@ -394,6 +398,7 @@ function readUsage(usage: Record<string, unknown>): {
     inputTokens,
     outputTokens,
     cacheTokens,
+    reasoningTokens,
   };
 }
 
