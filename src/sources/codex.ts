@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
 import { formatDateLocal } from "../render/format";
+import { collectJsonlFiles } from "./files";
 
 const DEFAULT_DB_PATH = path.join(os.homedir(), ".codex", "state_5.sqlite");
 const DEFAULT_SESSIONS_DIR = path.join(os.homedir(), ".codex", "sessions");
@@ -29,34 +30,15 @@ interface RolloutSummary {
   project: string;
 }
 
-function findRolloutForThread(sessionsDir: string, threadId: string): string | null {
-  try {
-    const years = fs.readdirSync(sessionsDir);
-    for (const year of years) {
-      const yearDir = path.join(sessionsDir, year);
-      if (!fs.statSync(yearDir).isDirectory()) continue;
-      const months = fs.readdirSync(yearDir);
-      for (const month of months) {
-        const monthDir = path.join(yearDir, month);
-        if (!fs.statSync(monthDir).isDirectory()) continue;
-        const days = fs.readdirSync(monthDir);
-        for (const day of days) {
-          const dayDir = path.join(monthDir, day);
-          if (!fs.statSync(dayDir).isDirectory()) continue;
-          const files = fs.readdirSync(dayDir);
-          for (const file of files) {
-            if (file.includes(threadId)) {
-              return path.join(dayDir, file);
-            }
-          }
-        }
-      }
-    }
-  } catch {}
-  return null;
+function findRolloutForThread(rolloutFiles: string[], threadId: string): string | null {
+  return rolloutFiles.find((file) => path.basename(file).includes(threadId)) || null;
 }
 
-function resolveRolloutPath(sessionsDir: string, thread: { id: string; rollout_path?: string | null }): string | null {
+function resolveRolloutPath(
+  sessionsDir: string,
+  thread: { id: string; rollout_path?: string | null },
+  findByThreadId: (threadId: string) => string | null
+): string | null {
   if (thread.rollout_path) {
     if (fs.existsSync(thread.rollout_path)) return thread.rollout_path;
 
@@ -66,7 +48,7 @@ function resolveRolloutPath(sessionsDir: string, thread: { id: string; rollout_p
     }
   }
 
-  return findRolloutForThread(sessionsDir, thread.id);
+  return findByThreadId(thread.id);
 }
 
 export async function parse(dbPath?: string, sessionsDir?: string, modelFilter?: string): Promise<AgentStats | null> {
@@ -75,25 +57,28 @@ export async function parse(dbPath?: string, sessionsDir?: string, modelFilter?:
   const sessDir = paths.sessionsDir;
   try {
     const { db, close } = await openDatabase(dbFile);
-    const threadColumns = new Set(
-      (queryAll(db, "PRAGMA table_info(threads)") as any[]).map((column) => String(column.name))
-    );
-    const rolloutPathColumn = threadColumns.has("rollout_path") ? "rollout_path" : "NULL as rollout_path";
+    let threads: any[] = [];
+    try {
+      const threadColumns = new Set(
+        (queryAll(db, "PRAGMA table_info(threads)") as any[]).map((column) => String(column.name))
+      );
+      const rolloutPathColumn = threadColumns.has("rollout_path") ? "rollout_path" : "NULL as rollout_path";
 
-    const threads = queryAll(db, `
-      SELECT
-        id,
-        COALESCE(model, 'unknown') as model,
-        COALESCE(cwd, '(unknown)') as project,
-        ${rolloutPathColumn},
-        tokens_used,
-        updated_at_ms
-      FROM threads
-      WHERE tokens_used > 0 OR updated_at_ms IS NOT NULL
-      ORDER BY updated_at_ms
-    `) as any[];
-
-    close();
+      threads = queryAll(db, `
+        SELECT
+          id,
+          COALESCE(model, 'unknown') as model,
+          COALESCE(cwd, '(unknown)') as project,
+          ${rolloutPathColumn},
+          tokens_used,
+          updated_at_ms
+        FROM threads
+        WHERE tokens_used > 0 OR updated_at_ms IS NOT NULL
+        ORDER BY updated_at_ms
+      `) as any[];
+    } finally {
+      close();
+    }
 
     const needle = modelFilter?.toLowerCase();
 
@@ -106,6 +91,11 @@ export async function parse(dbPath?: string, sessionsDir?: string, modelFilter?:
     let totalOutput = 0;
     let totalCache = 0;
     let totalSessions = 0;
+    let rolloutFiles: string[] | null = null;
+    const findByThreadId = (threadId: string): string | null => {
+      rolloutFiles ??= collectJsonlFiles(sessDir);
+      return findRolloutForThread(rolloutFiles, threadId);
+    };
 
     for (const thread of threads) {
       if (!thread.updated_at_ms) continue;
@@ -113,7 +103,7 @@ export async function parse(dbPath?: string, sessionsDir?: string, modelFilter?:
       const threadModel = (thread.model || "unknown").toLowerCase();
       if (needle && !threadModel.includes(needle)) continue;
 
-      const rolloutPath = resolveRolloutPath(sessDir, thread);
+      const rolloutPath = resolveRolloutPath(sessDir, thread, findByThreadId);
       let tokens: number;
       let inputTokens = 0;
       let outputTokens = 0;
@@ -256,7 +246,7 @@ function resolveCodexPaths(dataPath?: string, sessionsDir?: string): CodexPaths 
 }
 
 function parseSessionRollouts(sessionsDir: string, modelFilter?: string, sourcePath = sessionsDir): AgentStats | null {
-  const files = collectRolloutFiles(sessionsDir);
+  const files = collectJsonlFiles(sessionsDir);
   if (files.length === 0) return null;
 
   const needle = modelFilter?.toLowerCase();
@@ -359,21 +349,6 @@ function parseSessionRollouts(sessionsDir: string, modelFilter?: string, sourceP
     projectActivity,
     hourlyActivity,
   };
-}
-
-function collectRolloutFiles(dir: string): string[] {
-  const files: string[] = [];
-  try {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        files.push(...collectRolloutFiles(fullPath));
-      } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-        files.push(fullPath);
-      }
-    }
-  } catch {}
-  return files;
 }
 
 function readRolloutSummary(filePath: string): RolloutSummary | null {

@@ -1,4 +1,3 @@
-import fs from "fs";
 import os from "os";
 import path from "path";
 import type { AgentStats, HarnessName, CliOptions } from "../types";
@@ -6,6 +5,7 @@ import * as opencode from "./opencode";
 import * as claude from "./claude";
 import * as codex from "./codex";
 import * as pi from "./pi";
+import { exists, unique } from "./files";
 
 const HOME = os.homedir();
 const XDG_CONFIG_HOME = process.env.XDG_CONFIG_HOME || path.join(HOME, ".config");
@@ -83,9 +83,9 @@ const SOURCES: SourceConfig[] = [
 export async function collectAll(options: CliOptions = {}): Promise<AgentStats[]> {
   const verbose = options.verbose || false;
   const filterSet = options.agent
-    ? new Set(options.agent.split(",").map(s => s.trim().toLowerCase()))
+    ? new Set(options.agent.split(",").map((s) => s.trim().toLowerCase()))
     : null;
-  const agents: AgentStats[] = [];
+  const plannedSources: Array<{ source: SourceConfig; resolvedPath: string }> = [];
 
   for (const source of SOURCES) {
     if (filterSet && !filterSet.has(source.name)) {
@@ -102,11 +102,20 @@ export async function collectAll(options: CliOptions = {}): Promise<AgentStats[]
     }
 
     if (verbose) console.error(`[${source.name}] using path: ${resolvedPath}${customPath ? " (custom)" : " (auto-detected)"}`);
-    const stats = await source.parse(resolvedPath, options.model);
+    plannedSources.push({ source, resolvedPath });
+  }
+
+  const parsed = await Promise.all(
+    plannedSources.map(({ source, resolvedPath }) => source.parse(resolvedPath, options.model))
+  );
+
+  const agents: AgentStats[] = [];
+  for (let i = 0; i < plannedSources.length; i++) {
+    const stats = parsed[i];
     if (stats) {
       agents.push(stats);
     } else if (verbose) {
-      console.error(`[${source.name}] path exists but parsing returned no data`);
+      console.error(`[${plannedSources[i].source.name}] path exists but parsing returned no data`);
     }
   }
 
@@ -117,15 +126,6 @@ function firstExisting(paths: string[]): string | null {
   return paths.find(exists) || null;
 }
 
-function exists(p: string): boolean {
-  try {
-    fs.accessSync(p, fs.constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function compact(values: string[]): string[] {
-  return Array.from(new Set(values.filter(Boolean)));
+  return unique(values.filter(Boolean));
 }

@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
 import { formatDateLocal } from "../render/format";
+import { collectJsonlFiles, exists, unique } from "./files";
 
 const DEFAULT_ROOT = path.join(os.homedir(), ".claude");
 const DEFAULT_CACHE_PATH = path.join(DEFAULT_ROOT, "stats-cache.json");
@@ -360,21 +361,6 @@ function parseProjectLogs(projectsDir: string, modelFilter?: string): AgentStats
   };
 }
 
-function collectJsonlFiles(dir: string): string[] {
-  const files: string[] = [];
-  try {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        files.push(...collectJsonlFiles(fullPath));
-      } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-        files.push(fullPath);
-      }
-    }
-  } catch {}
-  return files;
-}
-
 function readUsage(usage: Record<string, unknown>): {
   tokens: number;
   inputTokens: number;
@@ -413,17 +399,4 @@ function projectNameFromFile(projectsDir: string, filePath: string): string {
 
 function normalizeProject(project: string): string {
   return project === "/" ? "(global)" : project;
-}
-
-function exists(p: string): boolean {
-  try {
-    fs.accessSync(p, fs.constants.R_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function unique(values: string[]): string[] {
-  return Array.from(new Set(values));
 }

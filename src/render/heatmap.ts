@@ -118,7 +118,7 @@ export function renderHeatmap(
   totalTokens: number,
   agents: AgentStats[] = []
 ): string {
-  const { startDate, endDate, grid } = dateToGrid(weeks);
+  const { endDate, grid } = dateToGrid(weeks);
 
   const dailyMap = new Map<string, DailyActivity>();
   for (const d of daily) {

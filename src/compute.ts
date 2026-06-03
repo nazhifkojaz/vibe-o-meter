@@ -11,7 +11,6 @@ export function computeStreaks(daily: DailyActivity[]): {
   if (activeDates.size === 0) return { currentStreak: 0, longestStreak: 0 };
 
   const today = new Date();
-  const todayStr = formatDateLocal(today);
 
   let currentStreak = 0;
   const d = new Date(today);
@@ -75,13 +74,19 @@ export function filterTimeRange(
   return agents.map((agent) => {
     const dailyActivity = agent.dailyActivity.filter((d) => d.date >= cutoffStr);
     const isFullRange = dailyActivity.length === agent.dailyActivity.length;
-    const totalTokens = dailyActivity.reduce((sum, day) => sum + day.tokens, 0);
-    const totalCost = dailyActivity.reduce((sum, day) => sum + day.cost, 0);
-    const totalTurns = dailyActivity.reduce((sum, day) => sum + day.turns, 0);
-    const bestDay = dailyActivity.reduce(
-      (best, day) => (day.tokens > best.tokens ? day : best),
-      { date: "", tokens: 0 }
-    );
+    let totalTokens = 0;
+    let totalCost = 0;
+    let totalTurns = 0;
+    let activeDays = 0;
+    let bestDay = { date: "", tokens: 0 };
+
+    for (const day of dailyActivity) {
+      totalTokens += day.tokens;
+      totalCost += day.cost;
+      totalTurns += day.turns;
+      if (day.tokens > 0 || day.turns > 0) activeDays++;
+      if (day.tokens > bestDay.tokens) bestDay = day;
+    }
 
     return {
       ...agent,
@@ -92,7 +97,7 @@ export function filterTimeRange(
       totalCost,
       totalTurns,
       totalSessions: isFullRange ? agent.totalSessions : 0,
-      activeDays: dailyActivity.filter((day) => day.tokens > 0 || day.turns > 0).length,
+      activeDays,
       bestDay,
       dailyActivity,
       modelActivity: isFullRange ? agent.modelActivity : [],
@@ -115,13 +120,18 @@ export function buildCombined(agents: AgentStats[]): CombinedStats {
   const allTimeTokens = streaked.reduce((s, a) => s + a.totalTokens, 0);
   const allTimeCost = streaked.reduce((s, a) => s + a.totalCost, 0);
 
-  const allTimeActiveDays = new Set(streaked.flatMap((a) => a.dailyActivity.map((d) => d.date))).size;
+  const activeDates = new Set<string>();
+  for (const agent of streaked) {
+    for (const day of agent.dailyActivity) {
+      activeDates.add(day.date);
+    }
+  }
 
   return {
     agents: streaked,
     combinedDaily,
     allTimeTokens,
     allTimeCost,
-    allTimeActiveDays,
+    allTimeActiveDays: activeDates.size,
   };
 }

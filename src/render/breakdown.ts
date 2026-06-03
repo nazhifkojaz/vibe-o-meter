@@ -1,4 +1,4 @@
-import type { AgentStats, ModelActivity, ProjectActivity, HourlyActivity } from "../types";
+import type { AgentStats } from "../types";
 import { harnessDisplayName } from "../types";
 import { ANSI_RESET, ANSI_DIM, ANSI_BOLD, ANSI_CYAN, formatTokens } from "./format";
 

@@ -21,13 +21,25 @@ interface SqlJsStatic {
 type SqlValue = number | string | null;
 
 let SQL: SqlJsStatic | null = null;
+let SQL_PROMISE: Promise<SqlJsStatic> | null = null;
 
 async function getSQL(): Promise<SqlJsStatic> {
-  if (!SQL) {
-    const initSqlJs = (await import("sql.js")).default as (options?: any) => Promise<SqlJsStatic>;
-    SQL = await initSqlJs();
+  if (SQL) return SQL;
+
+  if (!SQL_PROMISE) {
+    SQL_PROMISE = (async () => {
+      const initSqlJs = (await import("sql.js")).default as (options?: any) => Promise<SqlJsStatic>;
+      SQL = await initSqlJs();
+      return SQL;
+    })();
   }
-  return SQL!;
+
+  try {
+    return await SQL_PROMISE;
+  } catch (error) {
+    SQL_PROMISE = null;
+    throw error;
+  }
 }
 
 export async function openDatabase(filePath: string): Promise<{ db: SqlJsDatabase; close: () => void }> {
@@ -42,11 +54,14 @@ export async function openDatabase(filePath: string): Promise<{ db: SqlJsDatabas
 
 export function queryAll(db: SqlJsDatabase, sql: string, params: SqlValue[] = []): any[] {
   const stmt = db.prepare(sql);
-  if (params.length > 0) stmt.bind(params);
-  const rows: any[] = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject());
+  try {
+    if (params.length > 0) stmt.bind(params);
+    const rows: any[] = [];
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject());
+    }
+    return rows;
+  } finally {
+    stmt.free();
   }
-  stmt.free();
-  return rows;
 }

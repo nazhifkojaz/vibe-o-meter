@@ -2,6 +2,7 @@ import os from "os";
 import path from "path";
 import { openDatabase, queryAll } from "./sqlite";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
+import { formatDateLocal } from "../render/format";
 
 const DEFAULT_DB_PATH = path.join(os.homedir(), ".local", "share", "opencode", "opencode.db");
 
@@ -23,7 +24,6 @@ export async function parse(dbPath?: string, modelFilter?: string): Promise<Agen
   try {
     const { db, close } = await openDatabase(path);
     const needle = modelFilter?.toLowerCase();
-    const hasSessionId = hasColumn(db, "message", "session_id");
 
     let dailyActivity: DailyActivity[] = [];
     let projectActivity: ProjectActivity[] = [];
@@ -37,53 +37,57 @@ export async function parse(dbPath?: string, modelFilter?: string): Promise<Agen
     let totalTurns = 0;
     let totalSessions = 0;
 
-    if (needle) {
-      const fromMessages = readMessageActivity(db, needle, hasSessionId);
-      dailyActivity = fromMessages.dailyActivity;
-      modelActivity = fromMessages.modelActivity;
-      hourlyActivity = fromMessages.hourlyActivity;
-      totalTokens = fromMessages.totalTokens;
-      totalInput = fromMessages.totalInput;
-      totalOutput = fromMessages.totalOutput;
-      totalCache = fromMessages.totalCache;
-      totalCost = fromMessages.totalCost;
-      totalTurns = fromMessages.totalTurns;
-      totalSessions = fromMessages.totalSessions;
-      projectActivity = [];
-    } else {
-      try {
-        const fromSessions = readSessionActivity(db);
-        dailyActivity = fromSessions.dailyActivity;
-        projectActivity = fromSessions.projectActivity;
-        hourlyActivity = fromSessions.hourlyActivity;
-        totalTokens = fromSessions.totalTokens;
-        totalInput = fromSessions.totalInput;
-        totalOutput = fromSessions.totalOutput;
-        totalCache = fromSessions.totalCache;
-        totalCost = fromSessions.totalCost;
-        totalTurns = fromSessions.totalTurns;
-        totalSessions = fromSessions.totalSessions;
-      } catch {}
+    try {
+      const hasSessionId = hasColumn(db, "message", "session_id");
 
-      try {
-        const fromMessages = readMessageActivity(db, undefined, hasSessionId);
+      if (needle) {
+        const fromMessages = readMessageActivity(db, needle, hasSessionId);
+        dailyActivity = fromMessages.dailyActivity;
         modelActivity = fromMessages.modelActivity;
+        hourlyActivity = fromMessages.hourlyActivity;
+        totalTokens = fromMessages.totalTokens;
+        totalInput = fromMessages.totalInput;
+        totalOutput = fromMessages.totalOutput;
+        totalCache = fromMessages.totalCache;
+        totalCost = fromMessages.totalCost;
+        totalTurns = fromMessages.totalTurns;
+        totalSessions = fromMessages.totalSessions;
+        projectActivity = [];
+      } else {
+        try {
+          const fromSessions = readSessionActivity(db);
+          dailyActivity = fromSessions.dailyActivity;
+          projectActivity = fromSessions.projectActivity;
+          hourlyActivity = fromSessions.hourlyActivity;
+          totalTokens = fromSessions.totalTokens;
+          totalInput = fromSessions.totalInput;
+          totalOutput = fromSessions.totalOutput;
+          totalCache = fromSessions.totalCache;
+          totalCost = fromSessions.totalCost;
+          totalTurns = fromSessions.totalTurns;
+          totalSessions = fromSessions.totalSessions;
+        } catch {}
 
-        if (totalTokens === 0 && fromMessages.totalTokens > 0) {
-          dailyActivity = fromMessages.dailyActivity;
-          hourlyActivity = fromMessages.hourlyActivity;
-          totalTokens = fromMessages.totalTokens;
-          totalInput = fromMessages.totalInput;
-          totalOutput = fromMessages.totalOutput;
-          totalCache = fromMessages.totalCache;
-          totalCost = fromMessages.totalCost;
-          totalTurns = fromMessages.totalTurns;
-          totalSessions = fromMessages.totalSessions;
-        }
-      } catch {}
+        try {
+          const fromMessages = readMessageActivity(db, undefined, hasSessionId);
+          modelActivity = fromMessages.modelActivity;
+
+          if (totalTokens === 0 && fromMessages.totalTokens > 0) {
+            dailyActivity = fromMessages.dailyActivity;
+            hourlyActivity = fromMessages.hourlyActivity;
+            totalTokens = fromMessages.totalTokens;
+            totalInput = fromMessages.totalInput;
+            totalOutput = fromMessages.totalOutput;
+            totalCache = fromMessages.totalCache;
+            totalCost = fromMessages.totalCost;
+            totalTurns = fromMessages.totalTurns;
+            totalSessions = fromMessages.totalSessions;
+          }
+        } catch {}
+      }
+    } finally {
+      close();
     }
-
-    close();
 
     if (needle && totalTokens === 0) {
       return null;
@@ -320,13 +324,6 @@ function readMessageActivity(db: any, modelFilter?: string, hasSessionId = false
 
 function normalizeTimestamp(value: number): Date {
   return new Date(value < 1_000_000_000_000 ? value * 1000 : value);
-}
-
-function formatDateLocal(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 function getTableColumns(db: any, tableName: string): string[] {

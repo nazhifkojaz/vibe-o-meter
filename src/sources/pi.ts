@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import type { DailyActivity, ModelActivity, ProjectActivity, HourlyActivity, AgentStats } from "../types";
 import { formatDateLocal } from "../render/format";
+import { collectJsonlFiles } from "./files";
 
 const DEFAULT_SESSIONS_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
 
@@ -104,26 +105,11 @@ function parseSessionFile(filePath: string): AggregatedSession | null {
   }
 }
 
-function collectSessionFiles(sessionsDir: string): string[] {
-  const files: string[] = [];
-  try {
-    for (const entry of fs.readdirSync(sessionsDir, { withFileTypes: true })) {
-      const fullPath = path.join(sessionsDir, entry.name);
-      if (entry.isDirectory()) {
-        files.push(...collectSessionFiles(fullPath));
-      } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-        files.push(fullPath);
-      }
-    }
-  } catch {}
-  return files;
-}
-
 export function parse(sessionsDir?: string, modelFilter?: string): AgentStats | null {
   const dir = sessionsDir || DEFAULT_SESSIONS_DIR;
   try {
     if (!fs.existsSync(dir)) return null;
-    const files = collectSessionFiles(dir);
+    const files = collectJsonlFiles(dir);
     if (files.length === 0) return null;
 
     const dailyMap = new Map<string, { tokens: number; turns: number; cost: number }>();
