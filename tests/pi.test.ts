@@ -99,6 +99,74 @@ function writePiModelChangeFixture(): string {
   return sessionsDir;
 }
 
+function writePiRobustUsageFixture(): string {
+  const sessionsDir = mkdtempSync(path.join(tmpdir(), "vibe-o-meter-pi-robust-"));
+  tempDirs.push(sessionsDir);
+  const projectDir = path.join(sessionsDir, "secret-app");
+  mkdirSync(projectDir, { recursive: true });
+  writeFileSync(path.join(projectDir, "session.jsonl"), [
+    JSON.stringify({
+      type: "session",
+      version: 3,
+      id: "session-1",
+      timestamp: "2026-06-01T23:50:00",
+      cwd: "/home/alice/secret-app",
+    }),
+    JSON.stringify({
+      type: "message",
+      timestamp: "2026-06-01T23:55:00",
+      message: {
+        role: "assistant",
+        model: "pi-model",
+        provider: "pi",
+        usage: {
+          input: 100,
+          output: 50,
+          cacheRead: 20,
+          cacheWrite: 10,
+          totalTokens: 155,
+          cost: { total: 0.11 },
+        },
+      },
+    }),
+    JSON.stringify({
+      type: "message",
+      timestamp: "2026-06-02T00:05:00",
+      message: {
+        role: "assistant",
+        model: "pi-model",
+        provider: "pi",
+        usage: {
+          input: 5,
+          output: 5,
+          cacheRead: 10,
+          cacheWrite: 0,
+          cost: { total: 0.01 },
+        },
+      },
+    }),
+    JSON.stringify({
+      type: "message",
+      timestamp: "2026-06-02T00:10:00",
+      message: {
+        role: "user",
+        model: "pi-model",
+        provider: "pi",
+        usage: {
+          input: 999,
+          output: 999,
+          cacheRead: 999,
+          cacheWrite: 999,
+          totalTokens: 3996,
+          cost: { total: 99 },
+        },
+      },
+    }),
+  ].join("\n"));
+
+  return sessionsDir;
+}
+
 describe("pi.parse", () => {
   it("parses Pi session JSONL files from a sessions directory", () => {
     const sessionsDir = writePiFixture();
@@ -164,6 +232,33 @@ describe("pi.parse", () => {
       totalSessions: 1,
       modelActivity: [
         { model: "pi-model-from-change", harness: "pi", tokens: 180, inputTokens: 100, outputTokens: 50, cacheTokens: 30, cost: 0 },
+      ],
+    });
+  });
+
+  it("trusts totalTokens when present, ignores non-assistant usage, and buckets by message date", () => {
+    const stats = parse(writePiRobustUsageFixture());
+
+    expect(stats).not.toBeNull();
+    expect(stats).toMatchObject({
+      totalTokens: 175,
+      totalInputTokens: 105,
+      totalOutputTokens: 55,
+      totalCacheTokens: 40,
+      totalCost: 0.12,
+      totalTurns: 2,
+      totalSessions: 1,
+      activeDays: 2,
+      dailyActivity: [
+        { date: "2026-06-01", tokens: 155, turns: 1, cost: 0.11 },
+        { date: "2026-06-02", tokens: 20, turns: 1, cost: 0.01 },
+      ],
+      hourlyActivity: [
+        { hour: 0, tokens: 20, turns: 1 },
+        { hour: 23, tokens: 155, turns: 1 },
+      ],
+      modelActivity: [
+        { model: "pi-model", harness: "pi", tokens: 175, inputTokens: 105, outputTokens: 55, cacheTokens: 40, cost: 0.12 },
       ],
     });
   });

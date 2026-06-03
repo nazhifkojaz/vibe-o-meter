@@ -13,11 +13,11 @@ interface PiMessageUsage {
   cacheWrite?: number;
   totalTokens?: number;
   cost?: {
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-    total: number;
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    total?: number;
   };
 }
 
@@ -77,6 +77,7 @@ function parseSessionFile(filePath: string): AggregatedSession | null {
         }
         if (obj.type === "message" && obj.message) {
           const msg = obj.message;
+          if (msg.role && msg.role !== "assistant") continue;
           const totalTokens = getUsageTotal(msg.usage);
           if (totalTokens > 0) {
             if (msg.model) currentModel = msg.model;
@@ -136,39 +137,38 @@ export function parse(sessionsDir?: string, modelFilter?: string): AgentStats | 
       const session = parseSessionFile(file);
       if (!session || session.messages.length === 0) continue;
 
-      const date = formatDateLocal(new Date(session.timestamp));
       let sessionMatched = false;
 
       for (const msg of session.messages) {
         if (needle && !(msg.model || "unknown").toLowerCase().includes(needle)) continue;
         sessionMatched = true;
 
+        const timestamp = msg.timestamp || session.timestamp;
+        const date = formatDateLocal(new Date(timestamp));
         const d = dailyMap.get(date) || { tokens: 0, turns: 0, cost: 0 };
         const totalTokens = getUsageTotal(msg.usage);
         d.tokens += totalTokens;
         d.turns += 1;
-        d.cost += msg.usage.cost?.total || 0;
+        d.cost += getUsageCost(msg.usage);
         dailyMap.set(date, d);
 
         const mk = msg.model;
         const mv = modelMap.get(mk) || { tokens: 0, input: 0, output: 0, cache: 0, cost: 0 };
         mv.tokens += totalTokens;
-        mv.input += msg.usage.input || 0;
-        mv.output += msg.usage.output || 0;
-        mv.cache += (msg.usage.cacheRead || 0) + (msg.usage.cacheWrite || 0);
-        mv.cost += msg.usage.cost?.total || 0;
+        mv.input += tokenCount(msg.usage.input);
+        mv.output += tokenCount(msg.usage.output);
+        mv.cache += tokenCount(msg.usage.cacheRead) + tokenCount(msg.usage.cacheWrite);
+        mv.cost += getUsageCost(msg.usage);
         modelMap.set(mk, mv);
 
         const project = session.cwd === "/" ? "(global)" : session.cwd;
         projectMap.set(project, (projectMap.get(project) || 0) + totalTokens);
 
-        if (msg.timestamp) {
-          const hour = new Date(msg.timestamp).getHours();
-          const hv = hourlyMap.get(hour) || { tokens: 0, turns: 0 };
-          hv.tokens += totalTokens;
-          hv.turns += 1;
-          hourlyMap.set(hour, hv);
-        }
+        const hour = new Date(timestamp).getHours();
+        const hv = hourlyMap.get(hour) || { tokens: 0, turns: 0 };
+        hv.tokens += totalTokens;
+        hv.turns += 1;
+        hourlyMap.set(hour, hv);
       }
 
       if (sessionMatched) totalSessions++;
@@ -239,7 +239,22 @@ export function parse(sessionsDir?: string, modelFilter?: string): AgentStats | 
 
 function getUsageTotal(usage?: PiMessageUsage): number {
   if (!usage) return 0;
-  return usage.totalTokens || (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0) + (usage.cacheWrite || 0);
+  const totalTokens = numericToken(usage.totalTokens);
+  if (totalTokens !== null && totalTokens > 0) return totalTokens;
+
+  return tokenCount(usage.input) + tokenCount(usage.output) + tokenCount(usage.cacheRead) + tokenCount(usage.cacheWrite);
+}
+
+function getUsageCost(usage: PiMessageUsage): number {
+  return tokenCount(usage.cost?.total);
+}
+
+function numericToken(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : null;
+}
+
+function tokenCount(value: unknown): number {
+  return numericToken(value) || 0;
 }
 
 function projectNameFromFile(filePath: string): string {
