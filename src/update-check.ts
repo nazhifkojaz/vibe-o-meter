@@ -26,7 +26,7 @@ export async function checkForUpdate(): Promise<void> {
   try {
     const cached = readCache();
     if (cached && Date.now() - cached.lastChecked < CACHE_TTL_MS) {
-      if (cached.latestVersion !== CURRENT_VERSION) {
+      if (isNewerVersion(cached.latestVersion, CURRENT_VERSION)) {
         printWarning(cached.latestVersion);
       }
       return;
@@ -37,8 +37,7 @@ export async function checkForUpdate(): Promise<void> {
 
     const res = await fetch("https://registry.npmjs.org/vibe-o-meter/latest", {
       signal: controller.signal,
-    });
-    clearTimeout(timeout);
+    }).finally(() => clearTimeout(timeout));
 
     if (!res.ok) return;
 
@@ -48,10 +47,78 @@ export async function checkForUpdate(): Promise<void> {
 
     writeCache({ lastChecked: Date.now(), latestVersion });
 
-    if (latestVersion !== CURRENT_VERSION) {
+    if (isNewerVersion(latestVersion, CURRENT_VERSION)) {
       printWarning(latestVersion);
     }
   } catch {}
+}
+
+export function isNewerVersion(latest: string, current: string): boolean {
+  const latestVersion = parseVersion(latest);
+  const currentVersion = parseVersion(current);
+  if (!latestVersion || !currentVersion) return false;
+
+  for (const key of ["major", "minor", "patch"] as const) {
+    if (latestVersion[key] > currentVersion[key]) return true;
+    if (latestVersion[key] < currentVersion[key]) return false;
+  }
+
+  if (currentVersion.prerelease && !latestVersion.prerelease) return true;
+  if (!currentVersion.prerelease && latestVersion.prerelease) return false;
+  if (!currentVersion.prerelease || !latestVersion.prerelease) return false;
+
+  return comparePrerelease(latestVersion.prerelease, currentVersion.prerelease) > 0;
+}
+
+function parseVersion(value: string): {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string | null;
+} | null {
+  const match = value.trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  if (!match) return null;
+
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  const patch = Number(match[3]);
+  if (![major, minor, patch].every(Number.isSafeInteger)) return null;
+
+  return {
+    major,
+    minor,
+    patch,
+    prerelease: match[4] || null,
+  };
+}
+
+function comparePrerelease(a: string, b: string): number {
+  const aParts = a.split(".");
+  const bParts = b.split(".");
+  const length = Math.max(aParts.length, bParts.length);
+
+  for (let i = 0; i < length; i++) {
+    const aPart = aParts[i];
+    const bPart = bParts[i];
+    if (aPart === undefined) return -1;
+    if (bPart === undefined) return 1;
+    if (aPart === bPart) continue;
+
+    const aNumber = numericIdentifier(aPart);
+    const bNumber = numericIdentifier(bPart);
+    if (aNumber !== null && bNumber !== null) return aNumber - bNumber;
+    if (aNumber !== null) return -1;
+    if (bNumber !== null) return 1;
+    return aPart.localeCompare(bPart);
+  }
+
+  return 0;
+}
+
+function numericIdentifier(value: string): number | null {
+  if (!/^(0|[1-9]\d*)$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 function printWarning(latest: string): void {
