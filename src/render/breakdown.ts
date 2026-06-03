@@ -5,7 +5,7 @@ import { ANSI_RESET, ANSI_DIM, ANSI_BOLD, ANSI_CYAN, formatTokens } from "./form
 const BAR_CHAR = "\u2588";
 const BAR_EMPTY = "\u2591";
 
-export function renderByModel(agents: AgentStats[]): string {
+export function renderByModel(agents: AgentStats[], termWidth: number = 120): string {
   const modelMap = new Map<string, { tokens: number; harnesses: Set<string> }>();
   for (const agent of agents) {
     for (const m of agent.modelActivity) {
@@ -26,7 +26,8 @@ export function renderByModel(agents: AgentStats[]): string {
   const nameWidth = Math.min(maxNameLen + 1, 40);
   const maxTokens = sorted[0][1].tokens;
   const totalTokens = sorted.reduce((s, [, v]) => s + v.tokens, 0);
-  const barWidth = 20;
+  const fixedWidth = 2 + nameWidth + 10 + 14;
+  const barWidth = Math.max(5, Math.min(20, termWidth - fixedWidth));
 
   const lines: string[] = [];
   lines.push(`  ${ANSI_BOLD}Tokens by Model${ANSI_RESET}`);
@@ -46,7 +47,7 @@ export function renderByModel(agents: AgentStats[]): string {
   return lines.join("\n");
 }
 
-export function renderByProject(agents: AgentStats[]): string {
+export function renderByProject(agents: AgentStats[], termWidth: number = 120): string {
   const projectMap = new Map<string, { tokens: number; harnesses: Set<string> }>();
   for (const agent of agents) {
     for (const p of agent.projectActivity) {
@@ -63,7 +64,8 @@ export function renderByProject(agents: AgentStats[]): string {
   const totalTokens = sorted.reduce((s, [, v]) => s + v.tokens, 0);
   const maxNameLen = Math.max(...sorted.map(([p]) => p.length));
   const nameWidth = Math.min(maxNameLen + 1, 40);
-  const barWidth = 20;
+  const fixedWidth = 2 + nameWidth + 10 + 14;
+  const barWidth = Math.max(5, Math.min(20, termWidth - fixedWidth));
 
   const lines: string[] = [];
   lines.push(`  ${ANSI_BOLD}Tokens by Project${ANSI_RESET}`);
@@ -89,7 +91,7 @@ export function renderByProject(agents: AgentStats[]): string {
   return lines.join("\n");
 }
 
-export function renderByHour(agents: AgentStats[]): string {
+export function renderByHour(agents: AgentStats[], termWidth: number = 120): string {
   const hasTokens = agents.some(a => a.hourlyActivity.some(h => h.tokens > 0));
 
   const hourlyMap = new Map<number, { tokens: number; turns: number }>();
@@ -116,7 +118,8 @@ export function renderByHour(agents: AgentStats[]): string {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const tzLabel = `${tz} (UTC${sign}${offHh}:${offMm})`;
 
-  const barWidth = 30;
+  const fixedWidth = 2 + 3 + 10 + 1;
+  const barWidth = Math.max(5, Math.min(30, termWidth - fixedWidth));
 
   const lines: string[] = [];
   lines.push(`  ${ANSI_BOLD}Activity by Hour of Day${ANSI_RESET}  ${ANSI_DIM}${tzLabel}${ANSI_RESET}`);

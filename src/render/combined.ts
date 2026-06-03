@@ -5,25 +5,33 @@ import { renderStats } from "./stats";
 import { renderByModel, renderByProject, renderByHour } from "./breakdown";
 import path from "path";
 
+function getTerminalWidth(): number {
+  return process.stdout.columns || 120;
+}
+
 export function render(stats: CombinedStats, options: { weeks: number; by?: "model" | "project" | "hour" }): string {
   if (stats.agents.length === 0) {
     return "No AI coding agent data found.\n\nChecked common local data locations:\n  - OpenCode: $XDG_DATA_HOME/opencode/opencode.db, ~/.local/share/opencode/opencode.db, ~/Library/Application Support/opencode/opencode.db, or %APPDATA%/opencode/opencode.db\n  - Claude Code: ~/.claude, $XDG_CONFIG_HOME/claude, $XDG_DATA_HOME/claude, ~/Library/Application Support/Claude, or %APPDATA%/Claude\n  - Codex: ~/.codex, $XDG_CONFIG_HOME/codex, $XDG_DATA_HOME/codex, ~/Library/Application Support/Codex, or %APPDATA%/Codex\n  - Pi: ~/.pi/agent/sessions, $XDG_DATA_HOME/pi/agent/sessions, ~/Library/Application Support/Pi/agent/sessions, or %APPDATA%/Pi/agent/sessions\n\nRun with --verbose to see exactly which paths were checked. If your data lives elsewhere, pass an explicit path with --db, --claude, --codex, or --pi.";
   }
 
+  const termWidth = getTerminalWidth();
   const sections: string[] = [];
 
   if (options.by === "model") {
-    sections.push(renderByModel(stats.agents));
+    sections.push(renderByModel(stats.agents, termWidth));
   } else if (options.by === "project") {
-    sections.push(renderByProject(stats.agents));
+    sections.push(renderByProject(stats.agents, termWidth));
   } else if (options.by === "hour") {
-    sections.push(renderByHour(stats.agents));
+    sections.push(renderByHour(stats.agents, termWidth));
   } else {
+    const maxHeatmapWeeks = Math.max(Math.floor((termWidth - 6) / 2), 4);
+    const effectiveWeeks = Math.min(options.weeks, maxHeatmapWeeks);
+
     const harnesses = stats.agents.map((a) => harnessDisplayName(a.harness)).join(", ");
     const title = `Vibe-o-meter  [${harnesses}]`;
-    sections.push(renderHeatmap(stats.combinedDaily, options.weeks, title, stats.allTimeTokens, stats.agents));
+    sections.push(renderHeatmap(stats.combinedDaily, effectiveWeeks, title, stats.allTimeTokens, stats.agents));
     sections.push("");
-    sections.push(renderStats(stats));
+    sections.push(renderStats(stats, termWidth));
   }
 
   return sections.join("\n");

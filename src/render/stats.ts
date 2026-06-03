@@ -18,12 +18,12 @@ function renderLegend(harness: string): string {
   return parts.join(" ");
 }
 
-export function renderStats(stats: CombinedStats): string {
+export function renderStats(stats: CombinedStats, termWidth: number = 120): string {
   const agents = stats.agents;
   if (agents.length === 0) return "No agent data found.";
 
   const maxTokens = Math.max(...agents.map((a) => a.totalTokens));
-  const barWidth = 10;
+  const barWidth = Math.max(5, Math.min(10, termWidth - 80));
 
   const lines: string[] = [];
 
@@ -37,14 +37,18 @@ export function renderStats(stats: CombinedStats): string {
     const days = String(a.activeDays).padStart(3) + " active days";
     const streak = String(a.longestStreak).padStart(2) + "d streak";
     const peak = formatTokens(a.bestDay.tokens).padStart(8);
-    const legend = renderLegend(a.harness);
+    const legend = termWidth >= 100 ? renderLegend(a.harness) : "";
 
-    lines.push(
-      `  ${color}${name}${ANSI_RESET} ${color}${bar}${ANSI_RESET} ${tokens} tokens | peak ${peak} | ${days} | ${streak}  ${legend}`
-    );
+    let line: string;
+    if (termWidth >= 90) {
+      line = `  ${color}${name}${ANSI_RESET} ${color}${bar}${ANSI_RESET} ${tokens} tokens | peak ${peak} | ${days} | ${streak}  ${legend}`;
+    } else {
+      line = `  ${color}${name}${ANSI_RESET} ${color}${bar}${ANSI_RESET} ${tokens} tokens | ${days} | ${streak}`;
+    }
+    lines.push(line);
   }
 
-  const sep = "  " + "\u2500".repeat(70);
+  const sep = "  " + "\u2500".repeat(Math.min(70, termWidth - 2));
   lines.push(sep);
   lines.push(
     `  ${ANSI_BOLD}TOTAL${ANSI_RESET}        ${" ".repeat(barWidth)} ${formatTokens(stats.allTimeTokens).padStart(8)} tokens | ${String(stats.allTimeActiveDays).padStart(3)} active days`
