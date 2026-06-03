@@ -11,6 +11,7 @@ const HOME = os.homedir();
 const XDG_CONFIG_HOME = process.env.XDG_CONFIG_HOME || path.join(HOME, ".config");
 const XDG_DATA_HOME = process.env.XDG_DATA_HOME || path.join(HOME, ".local", "share");
 const APPDATA = process.env.APPDATA || "";
+const CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR || "";
 
 interface SourceConfig {
   name: HarnessName;
@@ -35,6 +36,7 @@ const SOURCES: SourceConfig[] = [
   {
     name: "claude",
     defaultPaths: compact([
+      CLAUDE_CONFIG_DIR ? CLAUDE_CONFIG_DIR : "",
       path.join(HOME, ".claude"),
       path.join(XDG_CONFIG_HOME, "claude"),
       path.join(XDG_DATA_HOME, "claude"),

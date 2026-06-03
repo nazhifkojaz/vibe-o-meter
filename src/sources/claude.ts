@@ -63,31 +63,42 @@ export function parse(claudePath?: string, modelFilter?: string): AgentStats | n
     }
 
     if (stat.isDirectory()) {
-      const cachePath = path.join(targetPath, "stats-cache.json");
-      const cacheStats = exists(cachePath) ? parseStatsCache(cachePath, modelFilter) : null;
-      if (cacheStats && cacheStats.totalTokens > 0) return cacheStats;
-
-      const projectDirs = targetPath === DEFAULT_ROOT
-        ? [DEFAULT_PROJECTS_DIR]
-        : [path.join(targetPath, "projects"), targetPath];
-
-      for (const projectDir of unique(projectDirs)) {
-        if (!exists(projectDir)) continue;
-        const projectStats = parseProjectLogs(projectDir, modelFilter);
-        if (projectStats) return projectStats;
-      }
-
-      if (cacheStats) return cacheStats;
+      return parseDirectory(targetPath, modelFilter);
     }
   } catch {
     if (!claudePath) {
+      if (exists(DEFAULT_PROJECTS_DIR)) {
+        const jsonlStats = parseProjectLogs(DEFAULT_PROJECTS_DIR, modelFilter);
+        if (jsonlStats) return jsonlStats;
+      }
       const cacheStats = exists(DEFAULT_CACHE_PATH) ? parseStatsCache(DEFAULT_CACHE_PATH, modelFilter) : null;
       if (cacheStats) return cacheStats;
-      if (exists(DEFAULT_PROJECTS_DIR)) return parseProjectLogs(DEFAULT_PROJECTS_DIR, modelFilter);
     }
   }
 
   return null;
+}
+
+function parseDirectory(targetPath: string, modelFilter?: string): AgentStats | null {
+  const cachePath = path.join(targetPath, "stats-cache.json");
+  const cacheStats = exists(cachePath) ? parseStatsCache(cachePath, modelFilter) : null;
+
+  const projectDirs = targetPath === DEFAULT_ROOT
+    ? [DEFAULT_PROJECTS_DIR]
+    : [path.join(targetPath, "projects"), targetPath];
+
+  let jsonlStats: AgentStats | null = null;
+  for (const projectDir of unique(projectDirs)) {
+    if (!exists(projectDir)) continue;
+    jsonlStats = parseProjectLogs(projectDir, modelFilter);
+    if (jsonlStats) break;
+  }
+
+  if (!cacheStats && !jsonlStats) return null;
+  if (!cacheStats) return jsonlStats;
+  if (!jsonlStats) return cacheStats;
+
+  return jsonlStats.totalTokens >= cacheStats.totalTokens ? jsonlStats : cacheStats;
 }
 
 function parseStatsCache(filePath: string, modelFilter?: string): AgentStats | null {
