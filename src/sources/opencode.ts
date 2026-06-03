@@ -256,7 +256,7 @@ function readMessageActivity(db: any, modelFilter?: string, hasSessionId = false
       if (tokens === 0) continue;
 
       const time = normalizeTimestamp(row.time_ms || d.time?.created || Date.now());
-      const date = formatDateUTC(time);
+      const date = formatDateLocal(time);
       const hour = time.getHours();
 
       const daily = dailyMap.get(date) || { tokens: 0, turns: 0, cost: 0 };
@@ -322,7 +322,7 @@ function normalizeTimestamp(value: number): Date {
   return new Date(value < 1_000_000_000_000 ? value * 1000 : value);
 }
 
-function formatDateUTC(d: Date): string {
+function formatDateLocal(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -340,14 +340,4 @@ function getTableColumns(db: any, tableName: string): string[] {
 function hasColumn(db: any, tableName: string, columnName: string): boolean {
   const columns = getTableColumns(db, tableName);
   return columns.includes(columnName);
-}
-
-function countDistinctSessionIds(rows: any[]): number {
-  const ids = new Set<string>();
-  for (const row of rows) {
-    if (row.session_id !== null && row.session_id !== undefined && row.session_id !== "") {
-      ids.add(String(row.session_id));
-    }
-  }
-  return ids.size;
 }
