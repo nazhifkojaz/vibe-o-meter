@@ -29,32 +29,6 @@ interface RolloutSummary {
   project: string;
 }
 
-function getLastTokenCount(filePath: string): RolloutTokens | null {
-  try {
-    const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      try {
-        const obj = JSON.parse(lines[i]);
-        if (
-          obj.type === "event_msg" &&
-          obj.payload?.type === "token_count" &&
-          obj.payload?.info?.total_token_usage
-        ) {
-          const u = obj.payload.info.total_token_usage;
-          return {
-            inputTokens: u.input_tokens || 0,
-            outputTokens: u.output_tokens || 0,
-            cachedTokens: u.cached_input_tokens || 0,
-            reasoningTokens: u.reasoning_output_tokens || 0,
-            totalTokens: (u.input_tokens || 0) + (u.cached_input_tokens || 0) + (u.output_tokens || 0) + (u.reasoning_output_tokens || 0),
-          };
-        }
-      } catch {}
-    }
-  } catch {}
-  return null;
-}
-
 function findRolloutForThread(sessionsDir: string, threadId: string): string | null {
   try {
     const years = fs.readdirSync(sessionsDir);
@@ -82,18 +56,36 @@ function findRolloutForThread(sessionsDir: string, threadId: string): string | n
   return null;
 }
 
+function resolveRolloutPath(sessionsDir: string, thread: { id: string; rollout_path?: string | null }): string | null {
+  if (thread.rollout_path) {
+    if (fs.existsSync(thread.rollout_path)) return thread.rollout_path;
+
+    if (!path.isAbsolute(thread.rollout_path)) {
+      const relativePath = path.join(sessionsDir, thread.rollout_path);
+      if (fs.existsSync(relativePath)) return relativePath;
+    }
+  }
+
+  return findRolloutForThread(sessionsDir, thread.id);
+}
+
 export async function parse(dbPath?: string, sessionsDir?: string, modelFilter?: string): Promise<AgentStats | null> {
   const paths = resolveCodexPaths(dbPath, sessionsDir);
   const dbFile = paths.dbFile;
   const sessDir = paths.sessionsDir;
   try {
     const { db, close } = await openDatabase(dbFile);
+    const threadColumns = new Set(
+      (queryAll(db, "PRAGMA table_info(threads)") as any[]).map((column) => String(column.name))
+    );
+    const rolloutPathColumn = threadColumns.has("rollout_path") ? "rollout_path" : "NULL as rollout_path";
 
     const threads = queryAll(db, `
       SELECT
         id,
         COALESCE(model, 'unknown') as model,
         COALESCE(cwd, '(unknown)') as project,
+        ${rolloutPathColumn},
         tokens_used,
         updated_at_ms
       FROM threads
@@ -106,7 +98,7 @@ export async function parse(dbPath?: string, sessionsDir?: string, modelFilter?:
     const needle = modelFilter?.toLowerCase();
 
     const dailyMap = new Map<string, { tokens: number; sessions: number }>();
-    const modelMap = new Map<string, { tokens: number; count: number }>();
+    const modelMap = new Map<string, { tokens: number; input: number; output: number; cache: number; count: number }>();
     const projectMap = new Map<string, number>();
     const hourlyMap = new Map<number, { tokens: number; sessions: number }>();
     let totalTokens = 0;
@@ -121,14 +113,14 @@ export async function parse(dbPath?: string, sessionsDir?: string, modelFilter?:
       const threadModel = (thread.model || "unknown").toLowerCase();
       if (needle && !threadModel.includes(needle)) continue;
 
-      const rolloutPath = findRolloutForThread(sessDir, thread.id);
+      const rolloutPath = resolveRolloutPath(sessDir, thread);
       let tokens: number;
       let inputTokens = 0;
       let outputTokens = 0;
       let cacheTokens = 0;
 
       if (rolloutPath) {
-        const usage = getLastTokenCount(rolloutPath);
+        const usage = readRolloutUsage(rolloutPath);
         if (usage && usage.totalTokens > 0) {
           tokens = usage.totalTokens;
           inputTokens = usage.inputTokens;
@@ -155,8 +147,11 @@ export async function parse(dbPath?: string, sessionsDir?: string, modelFilter?:
       dailyMap.set(date, d);
 
       const model = thread.model || "unknown";
-      const mv = modelMap.get(model) || { tokens: 0, count: 0 };
+      const mv = modelMap.get(model) || { tokens: 0, input: 0, output: 0, cache: 0, count: 0 };
       mv.tokens += tokens;
+      mv.input += inputTokens;
+      mv.output += outputTokens;
+      mv.cache += cacheTokens;
       mv.count += 1;
       modelMap.set(model, mv);
 
@@ -180,9 +175,9 @@ export async function parse(dbPath?: string, sessionsDir?: string, modelFilter?:
         model,
         harness: "codex" as const,
         tokens: v.tokens,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheTokens: 0,
+        inputTokens: v.input,
+        outputTokens: v.output,
+        cacheTokens: v.cache,
         cost: 0,
       }));
 
@@ -390,6 +385,7 @@ function readRolloutSummary(filePath: string): RolloutSummary | null {
   }
 
   let usage: RolloutTokens | null = null;
+  let completedUsage: RolloutTokens | null = null;
   let timestamp: string | null = null;
   let model = "unknown";
   let project = "(unknown)";
@@ -411,21 +407,99 @@ function readRolloutSummary(filePath: string): RolloutSummary | null {
     if (typeof payload.model === "string") model = payload.model;
     if (typeof payload.info?.model === "string") model = payload.info.model;
 
-    if (obj.type === "event_msg" && payload.type === "token_count" && payload.info?.total_token_usage) {
-      const parsedUsage = tokenUsageFromRaw(payload.info.total_token_usage);
-      if (parsedUsage.totalTokens > 0) usage = parsedUsage;
+    const cumulativeUsage = usageFromTokenCountEvent(obj);
+    if (cumulativeUsage && cumulativeUsage.totalTokens > 0) usage = cumulativeUsage;
+
+    const turnUsage = usageFromTurnCompletedEvent(obj);
+    if (turnUsage && turnUsage.totalTokens > 0) {
+      completedUsage = completedUsage ? addRolloutTokens(completedUsage, turnUsage) : turnUsage;
     }
   }
 
-  return usage ? { usage, timestamp, model, project } : null;
+  return usage || completedUsage ? { usage: usage || completedUsage!, timestamp, model, project } : null;
+}
+
+function readRolloutUsage(filePath: string): RolloutTokens | null {
+  try {
+    const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
+    let usage: RolloutTokens | null = null;
+    let completedUsage: RolloutTokens | null = null;
+
+    for (const line of lines) {
+      let obj: any;
+      try {
+        obj = JSON.parse(line);
+      } catch {
+        continue;
+      }
+
+      const cumulativeUsage = usageFromTokenCountEvent(obj);
+      if (cumulativeUsage && cumulativeUsage.totalTokens > 0) usage = cumulativeUsage;
+
+      const turnUsage = usageFromTurnCompletedEvent(obj);
+      if (turnUsage && turnUsage.totalTokens > 0) {
+        completedUsage = completedUsage ? addRolloutTokens(completedUsage, turnUsage) : turnUsage;
+      }
+    }
+
+    return usage || completedUsage;
+  } catch {
+    return null;
+  }
+}
+
+function usageFromTokenCountEvent(obj: any): RolloutTokens | null {
+  if (
+    obj.type === "event_msg" &&
+    obj.payload?.type === "token_count" &&
+    obj.payload?.info?.total_token_usage
+  ) {
+    const parsedUsage = tokenUsageFromRaw(obj.payload.info.total_token_usage);
+    return parsedUsage.totalTokens > 0 ? parsedUsage : null;
+  }
+
+  return null;
+}
+
+function usageFromTurnCompletedEvent(obj: any): RolloutTokens | null {
+  if (obj.type === "turn.completed" && obj.usage) {
+    const parsedUsage = tokenUsageFromRaw(obj.usage);
+    return parsedUsage.totalTokens > 0 ? parsedUsage : null;
+  }
+
+  return null;
+}
+
+function addRolloutTokens(a: RolloutTokens, b: RolloutTokens): RolloutTokens {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cachedTokens: a.cachedTokens + b.cachedTokens,
+    reasoningTokens: a.reasoningTokens + b.reasoningTokens,
+    totalTokens: a.totalTokens + b.totalTokens,
+  };
+}
+
+function numericToken(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : null;
+}
+
+function tokenCount(value: unknown): number {
+  return numericToken(value) || 0;
 }
 
 function tokenUsageFromRaw(u: any): RolloutTokens {
+  const inputTokens = tokenCount(u.input_tokens);
+  const outputTokens = tokenCount(u.output_tokens);
+  const cachedTokens = tokenCount(u.cached_input_tokens);
+  const reasoningTokens = tokenCount(u.reasoning_output_tokens);
+  const totalTokens = numericToken(u.total_tokens) ?? inputTokens + outputTokens;
+
   return {
-    inputTokens: u.input_tokens || 0,
-    outputTokens: u.output_tokens || 0,
-    cachedTokens: u.cached_input_tokens || 0,
-    reasoningTokens: u.reasoning_output_tokens || 0,
-    totalTokens: (u.input_tokens || 0) + (u.cached_input_tokens || 0) + (u.output_tokens || 0) + (u.reasoning_output_tokens || 0),
+    inputTokens,
+    outputTokens,
+    cachedTokens,
+    reasoningTokens,
+    totalTokens,
   };
 }
