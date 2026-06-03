@@ -43,6 +43,9 @@ interface ClaudeProjectLine {
   cwd?: string;
   sessionId?: string;
   session_id?: string;
+  role?: string;
+  model?: string;
+  usage?: Record<string, unknown>;
   message?: {
     role?: string;
     model?: string;
@@ -62,7 +65,7 @@ export function parse(claudePath?: string, modelFilter?: string): AgentStats | n
     if (stat.isDirectory()) {
       const cachePath = path.join(targetPath, "stats-cache.json");
       const cacheStats = exists(cachePath) ? parseStatsCache(cachePath, modelFilter) : null;
-      if (cacheStats) return cacheStats;
+      if (cacheStats && cacheStats.totalTokens > 0) return cacheStats;
 
       const projectDirs = targetPath === DEFAULT_ROOT
         ? [DEFAULT_PROJECTS_DIR]
@@ -73,6 +76,8 @@ export function parse(claudePath?: string, modelFilter?: string): AgentStats | n
         const projectStats = parseProjectLogs(projectDir, modelFilter);
         if (projectStats) return projectStats;
       }
+
+      if (cacheStats) return cacheStats;
     }
   } catch {
     if (!claudePath) {
@@ -238,13 +243,15 @@ function parseProjectLogs(projectsDir: string, modelFilter?: string): AgentStats
         continue;
       }
 
-      if (entry.type !== "assistant" && entry.message?.role !== "assistant") continue;
-      if (!entry.timestamp || !entry.message?.usage) continue;
+      if (entry.type !== "assistant" && entry.message?.role !== "assistant" && entry.role !== "assistant") continue;
 
-      const model = entry.message.model || "unknown";
+      const usageData = entry.message?.usage || entry.usage;
+      if (!entry.timestamp || !usageData) continue;
+
+      const model = entry.message?.model || entry.model || "unknown";
       if (needle && !model.toLowerCase().includes(needle)) continue;
 
-      const usage = readUsage(entry.message.usage);
+      const usage = readUsage(usageData);
       if (usage.tokens === 0) continue;
 
       const date = formatDateLocal(new Date(entry.timestamp));

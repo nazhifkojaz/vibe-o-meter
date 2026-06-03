@@ -65,20 +65,22 @@ export async function parse(dbPath?: string, modelFilter?: string): Promise<Agen
         totalSessions = fromSessions.totalSessions;
       } catch {}
 
-      const fromMessages = readMessageActivity(db, undefined, hasSessionId);
-      modelActivity = fromMessages.modelActivity;
+      try {
+        const fromMessages = readMessageActivity(db, undefined, hasSessionId);
+        modelActivity = fromMessages.modelActivity;
 
-      if (totalTokens === 0 && fromMessages.totalTokens > 0) {
-        dailyActivity = fromMessages.dailyActivity;
-        hourlyActivity = fromMessages.hourlyActivity;
-        totalTokens = fromMessages.totalTokens;
-        totalInput = fromMessages.totalInput;
-        totalOutput = fromMessages.totalOutput;
-        totalCache = fromMessages.totalCache;
-        totalCost = fromMessages.totalCost;
-        totalTurns = fromMessages.totalTurns;
-        totalSessions = fromMessages.totalSessions;
-      }
+        if (totalTokens === 0 && fromMessages.totalTokens > 0) {
+          dailyActivity = fromMessages.dailyActivity;
+          hourlyActivity = fromMessages.hourlyActivity;
+          totalTokens = fromMessages.totalTokens;
+          totalInput = fromMessages.totalInput;
+          totalOutput = fromMessages.totalOutput;
+          totalCache = fromMessages.totalCache;
+          totalCost = fromMessages.totalCost;
+          totalTurns = fromMessages.totalTurns;
+          totalSessions = fromMessages.totalSessions;
+        }
+      } catch {}
     }
 
     close();
@@ -129,33 +131,55 @@ function readSessionActivity(db: any): {
   totalTurns: number;
   totalSessions: number;
 } {
+  const columns = getTableColumns(db, "session");
+  if (columns.length === 0) throw new Error("session table not found");
+
+  const col = (name: string) => columns.includes(name);
+
+  const tokenCols = ["tokens_input", "tokens_output", "tokens_reasoning", "tokens_cache_read", "tokens_cache_write"]
+    .filter(col);
+  if (tokenCols.length === 0) throw new Error("no token columns in session table");
+
+  const tokensExpr = tokenCols.join(" + ");
+  const inputExpr = col("tokens_input") ? "SUM(tokens_input)" : "0";
+  const outputExpr = col("tokens_output") ? "SUM(tokens_output)" : "0";
+  const cacheParts: string[] = [];
+  if (col("tokens_cache_read")) cacheParts.push("tokens_cache_read");
+  if (col("tokens_cache_write")) cacheParts.push("tokens_cache_write");
+  const cacheExpr = cacheParts.length > 0 ? `SUM(${cacheParts.join(" + ")})` : "0";
+  const costExpr = col("cost") ? "SUM(cost)" : "0";
+
   const sessions = queryAll(db, `
     SELECT
       DATE(time_created / 1000, 'unixepoch', 'localtime') as date,
-      SUM(tokens_input) as input_tokens,
-      SUM(tokens_output) as output_tokens,
-      SUM(tokens_cache_read + tokens_cache_write) as cache_tokens,
-      SUM(tokens_input + tokens_output + tokens_reasoning + tokens_cache_read + tokens_cache_write) as tokens,
-      SUM(cost) as cost,
+      ${inputExpr} as input_tokens,
+      ${outputExpr} as output_tokens,
+      ${cacheExpr} as cache_tokens,
+      SUM(${tokensExpr}) as tokens,
+      ${costExpr} as cost,
       COUNT(*) as session_count
     FROM session
     GROUP BY date
     ORDER BY date
   `) as any[];
 
-  const projectRows = queryAll(db, `
+  const projectActivity: ProjectActivity[] = col("directory") ? (queryAll(db, `
     SELECT
       directory as project,
-      SUM(tokens_input + tokens_output + tokens_reasoning + tokens_cache_read + tokens_cache_write) as tokens
+      SUM(${tokensExpr}) as tokens
     FROM session
     GROUP BY project
     ORDER BY tokens DESC
-  `) as any[];
+  `) as any[]).filter((r: any) => r.project && r.tokens > 0).map((r: any) => ({
+    project: r.project === "/" ? "(global)" : r.project,
+    harness: "opencode" as const,
+    tokens: r.tokens,
+  })) : [];
 
   const hourlyRows = queryAll(db, `
     SELECT
       CAST(STRFTIME('%H', time_created / 1000, 'unixepoch', 'localtime') AS INTEGER) as hour,
-      SUM(tokens_input + tokens_output + tokens_reasoning + tokens_cache_read + tokens_cache_write) as tokens,
+      SUM(${tokensExpr}) as tokens,
       COUNT(*) as turns
     FROM session
     GROUP BY hour
@@ -169,14 +193,6 @@ function readSessionActivity(db: any): {
       tokens: r.tokens,
       turns: r.session_count,
       cost: r.cost || 0,
-    }));
-
-  const projectActivity = projectRows
-    .filter((r: any) => r.project && r.tokens > 0)
-    .map((r: any) => ({
-      project: r.project === "/" ? "(global)" : r.project,
-      harness: "opencode" as const,
-      tokens: r.tokens,
     }));
 
   const hourlyActivity = hourlyRows.map((r: any) => ({
@@ -200,10 +216,18 @@ function readSessionActivity(db: any): {
 }
 
 function readMessageActivity(db: any, modelFilter?: string, hasSessionId = false): MessageActivitySummary {
+  const msgColumns = getTableColumns(db, "message");
+  if (msgColumns.length === 0) throw new Error("message table not found");
+
+  const hasTimeCreated = msgColumns.includes("time_created");
   const sessionIdColumn = hasSessionId ? "session_id" : "NULL as session_id";
+  const timeExpr = hasTimeCreated
+    ? "COALESCE(CAST(json_extract(data, '$.time.created') AS INTEGER), time_created)"
+    : "CAST(json_extract(data, '$.time.created') AS INTEGER)";
+
   const rows = queryAll(db, `
     SELECT
-      COALESCE(CAST(json_extract(data, '$.time.created') AS INTEGER), time_created) as time_ms,
+      ${timeExpr} as time_ms,
       data,
       ${sessionIdColumn}
     FROM message
@@ -305,13 +329,17 @@ function formatDateUTC(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function hasColumn(db: any, tableName: string, columnName: string): boolean {
+function getTableColumns(db: any, tableName: string): string[] {
   try {
-    const columns = queryAll(db, `PRAGMA table_info(${tableName})`) as Array<{ name?: string }>;
-    return columns.some((column) => column.name === columnName);
+    return (queryAll(db, `PRAGMA table_info(${tableName})`) as Array<{ name: string }>).map(c => c.name);
   } catch {
-    return false;
+    return [];
   }
+}
+
+function hasColumn(db: any, tableName: string, columnName: string): boolean {
+  const columns = getTableColumns(db, tableName);
+  return columns.includes(columnName);
 }
 
 function countDistinctSessionIds(rows: any[]): number {
