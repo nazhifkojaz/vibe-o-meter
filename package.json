@@ -33,7 +33,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nazhifkojaz/vibe-stats.git"
+    "url": "git+https://github.com/nazhifkojaz/vibe-o-meter.git"
   },
   "dependencies": {
     "sql.js": "^1.14.1"
