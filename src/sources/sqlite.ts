@@ -42,9 +42,19 @@ async function getSQL(): Promise<SqlJsStatic> {
   }
 }
 
+async function readLargeFile(filePath: string): Promise<Buffer> {
+  const { size } = await fs.promises.stat(filePath);
+  const chunks: Buffer[] = [];
+  const stream = fs.createReadStream(filePath, { highWaterMark: 64 * 1024 * 1024 });
+  for await (const chunk of stream) {
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks, size);
+}
+
 export async function openDatabase(filePath: string): Promise<{ db: SqlJsDatabase; close: () => void }> {
   const SQL = await getSQL();
-  const buffer = fs.readFileSync(filePath);
+  const buffer = await readLargeFile(filePath);
   const db = new SQL.Database(buffer);
   return {
     db,
